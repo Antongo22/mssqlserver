@@ -1,6 +1,11 @@
 import express from 'express';
 import sql from 'mssql';
 import { fileURLToPath } from 'node:url';
+import { randomUUID } from 'node:crypto';
+import { executeScript, running } from './lib/query.js';
+import { installCatalog } from './lib/catalog.js';
+import { installTables } from './lib/tables.js';
+import { installOperations } from './lib/operations.js';
 
 const app = express();
 const port = Number(process.env.PORT || 3000);
@@ -31,7 +36,7 @@ app.use((req, res, next) => {
   const hostname = (req.headers.host || '').split(':')[0];
   if (!['localhost', '127.0.0.1'].includes(hostname)) return res.status(403).json({ error: 'Разрешён только локальный доступ.' });
   res.set({ 'X-Content-Type-Options': 'nosniff', 'Referrer-Policy': 'no-referrer',
-    'Content-Security-Policy': "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; frame-ancestors 'none'; base-uri 'none'; form-action 'self'" });
+    'Content-Security-Policy': "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; frame-ancestors 'none'; base-uri 'none'; form-action 'self'" });
   if (req.path.startsWith('/api/')) {
     res.set('Cache-Control', 'no-store');
     if (req.headers['x-admin-request'] !== '1') return res.status(403).json({ error: 'Требуется заголовок X-Admin-Request: 1.' });
@@ -39,7 +44,7 @@ app.use((req, res, next) => {
   }
   next();
 });
-app.use(express.json({ limit: '256kb' }));
+app.use(express.json({ limit: '2mb' }));
 app.get('/health', async (req, res) => {
   try { await withDb('master', p => p.request().query('SELECT 1 AS ok')); res.json({ ok: true }); }
   catch { res.status(503).json({ ok: false }); }
@@ -108,46 +113,35 @@ app.post('/api/databases/:database/tables', async (req, res) => {
     if (c.primaryKey && c.type === 'NVARCHAR(MAX)') throw fail('NVARCHAR(MAX) нельзя использовать как первичный ключ.');
     return `${identifier(c.name)} ${c.type}${c.identity ? ' IDENTITY(1,1)' : ''} ${c.primaryKey || !c.nullable ? 'NOT NULL' : 'NULL'}${c.primaryKey ? ' PRIMARY KEY' : ''}`;
   });
-  await withDb(req.params.database, p => p.request().batch(`CREATE TABLE dbo.${table} (${definitions.join(',')})`));
+  await withDb(req.params.database, p => p.request().batch(`CREATE TABLE ${identifier(req.body.schema || 'dbo')}.${table} (${definitions.join(',')})`));
   res.status(201).json({ ok: true });
 });
-// Stream the response to bound retained results even for large SELECTs.
-async function runQuery(pool, text) {
-  const request = pool.request();
-  request.stream = true;
-  request.arrayRowMode = true;
-  // In streaming mode the driver reports SQL errors via events.
-  let streamError;
-  request.on('error', error => { streamError ||= error; });
-  const recordsets = [], messages = [];
-  let current, count = 0, bytes = 0, truncated = false;
-  request.on('recordset', columns => {
-    current = { columns: columns.map(c => c.name), rows: [] };
-    if (recordsets.length < 20) recordsets.push(current);
-    else { current = null; truncated = true; }
-  });
-  request.on('row', row => {
-    const size = Buffer.byteLength(JSON.stringify(row));
-    if (current && current.rows.length < 1000 && count < 5000 && bytes + size < 2_000_000) {
-      current.rows.push(row); count++; bytes += size;
-    } else truncated = true;
-  });
-  request.on('info', info => { if (messages.length < 100) messages.push(info.message.slice(0, 4000)); });
-  const result = await request.batch(text);
-  if (streamError) throw streamError;
-  return { recordsets, messages, rowsAffected: result.rowsAffected, truncated };
-}
+const services = { withDb, sql, identifier, fail };
+installCatalog(app, services);
+installTables(app, services);
+installOperations(app, services);
 app.post('/api/query', async (req, res) => {
   if (typeof req.body.sql !== 'string' || !req.body.sql.trim()) throw fail('Введите SQL-запрос.');
-  if (/^\s*GO\s*(?:\d+)?\s*(?:--.*)?$/im.test(req.body.sql)) throw fail('GO — разделитель sqlcmd. Выполняйте каждый блок отдельно, без строки GO.');
   const start = performance.now();
-  const result = await withDb(req.body.database, p => runQuery(p, req.body.sql));
-  res.json({ ...result, durationMs: Math.round(performance.now() - start) });
+  const body = { ...req.body, id: req.body.id || randomUUID() };
+  let disconnect;
+  try {
+    const result = await withDb(body.database, p => executeScript(p, body, cancel => {
+      disconnect = () => { if (!res.writableEnded) cancel('Клиент отключился.'); };
+      res.on('close', disconnect);
+    }));
+    res.json({ ...result, durationMs: Math.round(performance.now() - start) });
+  } finally { if (disconnect) res.off('close', disconnect); }
+});
+app.post('/api/query/:id/cancel', (req,res) => {
+  const cancel = running.get(req.params.id);
+  if (!cancel) return res.status(404).json({error:'Запрос уже завершён или ещё не запущен.'});
+  cancel(); res.json({ok:true});
 });
 app.use('/api', (req, res) => res.status(404).json({ error: 'Метод API не найден.' }));
 app.use(express.static(fileURLToPath(new URL('./public', import.meta.url))));
 app.use((err, req, res, next) => {
   res.status(err.status || (err.code === 'ELOGIN' || err.code === 'ESOCKET' ? 503 : 400))
-    .json({ error: err.message || 'Ошибка сервера.', code: err.code, line: err.lineNumber });
+    .json({ error: [...(err.precedingErrors || []).map(e=>e.message), err.message || 'Ошибка сервера.'].join('\n'), code: err.code, line: err.lineNumber, partial: err.partial });
 });
 app.listen(port, '0.0.0.0', () => console.log(`MSSQL Studio: http://localhost:${port}`));

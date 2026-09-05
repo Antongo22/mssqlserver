@@ -29,7 +29,7 @@ test('database lifecycle, quoted identifiers, table data and query limits', asyn
     assert.equal(capped.data.recordsets[0].rows.length, 1000);
     assert.equal(capped.data.truncated, true);
     assert.equal((await query('SELECT * FROM NoSuchTable;')).status, 400);
-    assert.equal((await query('SELECT 1;\nGO\nSELECT 2;')).status, 400);
+    assert.equal((await query('SELECT 1;\nGO\nSELECT 2;')).status, 200);
     assert.equal((await api(path, 'DELETE', { confirm: 'wrong' })).status, 400);
     assert.equal((await api('/api/databases/master', 'DELETE', { confirm: 'master' })).status, 400);
   } finally {

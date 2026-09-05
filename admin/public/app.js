@@ -6,7 +6,7 @@ const dbPath = () => `/api/databases/${encodeURIComponent(state.database)}`;
 async function api(path, options = {}) {
   const response = await fetch(path, { ...options, headers: { 'Content-Type': 'application/json', 'X-Admin-Request': '1' }, body: options.body ? JSON.stringify(options.body) : undefined });
   const data = await response.json();
-  if (!response.ok) throw new Error(data.error || 'Ошибка запроса');
+  if (!response.ok) throw Object.assign(new Error(data.error || 'Ошибка запроса'), {details: data});
   return data;
 }
 function notice(message, error = false) { $('notice').textContent = message; $('notice').className = error ? 'error' : ''; $('notice').hidden = !message; }
@@ -31,6 +31,7 @@ async function loadDatabases(preferred) {
 }
 async function selectDatabase(name) {
   if (!name) return;
+  if (state.busy) throw new Error('Сначала завершите или отмените текущий SQL-запрос.');
   state.database = name; state.table = null; state.columns = []; state.data = null;
   const generation = ++state.generation;
   const database = state.databases.find(d => d.name === name);
@@ -49,7 +50,7 @@ async function selectDatabase(name) {
   try {
     const tables = await api(`${dbPath()}/tables`);
     if (generation !== state.generation) return;
-    state.tables = tables; renderTables();
+    state.tables = tables; renderTables(); document.dispatchEvent(new CustomEvent('database-changed'));
   } catch (error) { if (generation === state.generation) { state.tables = []; renderTables(); notice(error.message, true); } }
 }
 function renderTables() {
@@ -87,7 +88,7 @@ function showStructure() {
   }));
 }
 function tab(name) {
-  for (const id of ['tables', 'query']) { $(id + '-panel').hidden = id !== name; $(id + '-tab').classList.toggle('active', id === name); $(id + '-tab').setAttribute('aria-selected', String(id === name)); }
+  for (const id of ['tables', 'query', 'objects', 'security', 'backups', 'monitor', 'jobs', 'settings']) { $(id + '-panel').hidden = id !== name; $(id + '-tab').classList.toggle('active', id === name); $(id + '-tab').setAttribute('aria-selected', String(id === name)); }
 }
 const selectedTableName = () => state.table ? `${quote(state.table.schema)}.${quote(state.table.name)}` : '[dbo].[TableName]';
 function template(type) {
@@ -103,30 +104,38 @@ function template(type) {
     create: `CREATE TABLE dbo.NewTable (\n    Id INT IDENTITY(1,1) PRIMARY KEY,\n    Name NVARCHAR(255) NOT NULL,\n    CreatedAt DATETIME2 NOT NULL DEFAULT SYSDATETIME()\n);`,
   };
   if (!templates[type]) return;
-  $('sql-editor').value = templates[type]; tab('query'); $('sql-editor').focus(); $('query-template').value = '';
+  setEditorText(templates[type]); tab('query'); window.sqlEditor?.focus(); $('query-template').value = '';
 }
+function setEditorText(text) { if(window.sqlEditor) window.sqlEditor.setValue(text); else $('sql-editor').value=text; }
 async function runQuery() {
   if (state.busy || !state.database) return;
+  if($('execution-plans')) $('execution-plans').hidden=true;
   state.busy = true; $('run-query').disabled = true; $('run-query').textContent = 'Выполняется…';
   $('new-database').disabled = true; $('new-table').disabled = true; $('delete-database').disabled = true;
   const generation = state.generation, database = state.database;
   notice(''); $('query-stats').textContent = 'Выполнение…';
   const editor = $('sql-editor');
-  const text = editor.value.substring(editor.selectionStart, editor.selectionEnd).trim() || editor.value;
+  const text = window.sqlEditor ? (window.sqlEditor.getSelection().trim() || window.sqlEditor.getValue()) : (editor.value.substring(editor.selectionStart, editor.selectionEnd).trim() || editor.value);
+  const id = crypto.randomUUID(); state.queryId = id;
+  if($('cancel-query')) $('cancel-query').disabled = false;
   try {
-    const result = await api('/api/query', { method: 'POST', body: { database, sql: text } });
+    const result = await api('/api/query', { method: 'POST', body: { database, sql: text, id, timeout: Number($('query-timeout')?.value || 60), transaction: $('query-transaction')?.checked, statistics: $('query-statistics')?.checked, mode: state.planMode } });
+    document.dispatchEvent(new CustomEvent('query-completed', { detail: { database, sql: text, result } }));
     if (generation !== state.generation) return;
     state.results = result; state.resultIndex = 0;
     $('query-stats').textContent = `${result.durationMs} мс · затронуто ${result.rowsAffected.reduce((a, b) => a + b, 0)} строк`;
     $('query-messages').hidden = !result.messages.length && !result.truncated;
-    $('query-messages').textContent = [...result.messages, ...(result.truncated ? ['Показана часть результата: до 1000 строк на набор, 5000 всего и 2 МБ. Уточните SELECT / WHERE для остальных данных.'] : [])].join('\n');
+    $('query-messages').textContent = [...result.messages, ...(result.truncated ? ['Показана часть результата: до 1000 строк на набор, 5000 всего и 4 МБ. Уточните SELECT / WHERE для остальных данных.'] : [])].join('\n');
     renderResult();
+    document.dispatchEvent(new CustomEvent('query-rendered'));
     try { state.tables = await api(`${dbPath()}/tables`); if (generation === state.generation) renderTables(); } catch { /* Database may have been removed by SQL. */ }
   } catch (error) {
     if (generation !== state.generation) return;
-    state.results = null; $('export-csv').disabled = true; $('result-tabs').hidden = true; $('query-messages').hidden = true;
+    state.results = error.details?.partial || null; $('export-csv').disabled = true; $('result-tabs').hidden = true; $('query-messages').hidden = false;
+    $('query-messages').textContent = error.details?.partial?.rolledBack ? 'Транзакция откачена.' : `Завершено блоков: ${error.details?.partial?.completedBatches || 0}. Ранее выполненные команды могли сохранить изменения.`;
     $('query-stats').textContent = 'Ошибка'; $('query-result').innerHTML = `<div class="empty small"><h3>Запрос не выполнен</h3><p class="error-text">${esc(error.message)}</p></div>`;
   } finally {
+    state.queryId = null; state.planMode = undefined; if($('cancel-query')) $('cancel-query').disabled = true;
     state.busy = false; $('run-query').disabled = false; $('run-query').textContent = '▶ Выполнить';
     $('new-database').disabled = false; $('new-table').disabled = false;
     $('delete-database').disabled = (state.databases.find(d => d.name === state.database)?.id || 0) <= 4;
@@ -169,21 +178,23 @@ function addColumn(first = false) {
 function newTable() {
   if (!state.database) return;
   const database = state.database;
-  modal('Новая таблица', `<label class="field">Название таблицы<input name="name" required maxlength="128" placeholder="Например, Products"><small>База: ${esc(database)} · схема dbo. PK — первичный ключ, AUTO — автоинкремент.</small></label><div id="columns"></div><button type="button" class="button" id="add-column">＋ Столбец</button>`, async form => {
+  modal('Новая таблица', `<label class="field">Название таблицы<input name="name" required maxlength="128" placeholder="Например, Products"><small>База: ${esc(database)}. PK — первичный ключ, AUTO — автоинкремент.</small></label><label class="field">Схема<input name="schema" value="dbo" required maxlength="128"></label><div id="columns"></div><button type="button" class="button" id="add-column">＋ Столбец</button>`, async form => {
     const columns = [...$('columns').children].map(row => ({ name: row.querySelector('.column-name').value.trim(), type: row.querySelector('.column-type').value, nullable: row.querySelector('.column-null').checked, primaryKey: row.querySelector('.column-pk').checked, identity: row.querySelector('.column-auto').checked }));
-    const name = new FormData(form).get('name').trim();
-    await api(`/api/databases/${encodeURIComponent(database)}/tables`, { method: 'POST', body: { name, columns } });
-    await selectDatabase(database); const created = state.tables.find(t => t.schema === 'dbo' && t.name === name); if (created) await openTable(created);
+    const name = new FormData(form).get('name').trim(), schema = new FormData(form).get('schema').trim();
+    await api(`/api/databases/${encodeURIComponent(database)}/tables`, { method: 'POST', body: { name, schema, columns } });
+    await selectDatabase(database); const created = state.tables.find(t => t.schema === schema && t.name === name); if (created) await openTable(created);
     notice(`Таблица «${name}» создана.`);
   }, 'Создать таблицу', false, true);
   addColumn(true); addColumn(); $('add-column').onclick = () => addColumn();
 }
 $('modal-form').onsubmit = async event => {
   event.preventDefault(); $('modal-submit').disabled = true; $('modal-error').hidden = true;
+  $('close-modal').disabled = true; $('cancel-modal').disabled = true;
   try { await submitModal(event.target); $('modal').close(); }
   catch (error) { $('modal-error').textContent = error.message; $('modal-error').hidden = false; }
-  finally { $('modal-submit').disabled = false; }
+  finally { $('modal-submit').disabled = false; $('close-modal').disabled = false; $('cancel-modal').disabled = false; }
 };
+$('modal').addEventListener('cancel', event => { if($('modal-submit').disabled) event.preventDefault(); });
 $('modal-body').onclick = event => event.target.closest('.remove-column')?.parentElement.remove();
 $('cancel-modal').onclick = $('close-modal').onclick = () => $('modal').close();
 $('new-database').onclick = newDatabase; $('delete-database').onclick = deleteDatabase; $('new-table').onclick = newTable;

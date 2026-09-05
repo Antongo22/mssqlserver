@@ -10,11 +10,13 @@ services:
     environment:
       ACCEPT_EULA: "Y"
       MSSQL_PID: Developer
+      MSSQL_AGENT_ENABLED: "true"
       MSSQL_SA_PASSWORD: ${MSSQL_SA_PASSWORD:?Set MSSQL_SA_PASSWORD in .env}
     ports:
       - "127.0.0.1:${MSSQL_PORT:-1433}:1433"
     volumes:
       - mssql_data:/var/opt/mssql
+      - mssql_backups:/var/opt/mssql/backups
     restart: unless-stopped
     healthcheck:
       test: ["CMD-SHELL", "SQLCMDPASSWORD=\"$$MSSQL_SA_PASSWORD\" /opt/mssql-tools18/bin/sqlcmd -S localhost -U sa -C -b -l 5 -Q 'SELECT 1' -o /dev/null"]
@@ -25,6 +27,8 @@ services:
 
   admin:
     build: ./admin
+    volumes:
+      - mssql_backups:/backups
     environment:
       MSSQL_HOST: mssql
       MSSQL_SA_PASSWORD: ${MSSQL_SA_PASSWORD:?Set MSSQL_SA_PASSWORD in .env}
@@ -43,3 +47,6 @@ services:
 
 volumes:
   mssql_data:
+    name: mssqlserver_mssql_data
+  mssql_backups:
+    name: mssqlserver_backups

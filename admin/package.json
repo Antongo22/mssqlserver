@@ -3,6 +3,21 @@
   "version": "1.0.0",
   "private": true,
   "type": "module",
-  "scripts": { "start": "node server.js", "test": "node --test test/*.test.js" },
-  "dependencies": { "express": "^5.1.0", "mssql": "^12.0.0" }
+  "scripts": {
+    "start": "node server.js",
+    "test": "node --test test/*.test.js",
+    "build": "esbuild editor-entry.js --bundle --minify --outfile=public/editor.js"
+  },
+  "dependencies": {
+    "@codemirror/autocomplete": "^6.20.3",
+    "@codemirror/commands": "^6.11.0",
+    "@codemirror/lang-sql": "^6.10.0",
+    "@codemirror/state": "^6.7.4",
+    "@codemirror/view": "^6.43.11",
+    "express": "^5.1.0",
+    "mssql": "^12.0.0"
+  },
+  "devDependencies": {
+    "esbuild": "^0.28.2"
+  }
 }

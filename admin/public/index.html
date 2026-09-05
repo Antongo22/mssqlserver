@@ -4,7 +4,7 @@
   <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1">
   <title>MSSQL Studio — локальная консоль</title>
   <meta name="description" content="Локальное управление базами Microsoft SQL Server">
-  <link rel="stylesheet" href="/style.css"><script src="/app.js" defer></script>
+  <link rel="stylesheet" href="/style.css"><link rel="stylesheet" href="/advanced.css"><script src="/editor.js" defer></script><script src="/app.js" defer></script><script src="/advanced.js" defer></script>
 </head>
 <body>
 <aside class="sidebar">
@@ -31,7 +31,7 @@
       <div class="section-toolbar"><div><h2>SQL-редактор</h2><p class="muted">Запрос выполняется в выбранной базе</p></div><label class="template-label">Шаблон <select id="query-template"><option value="">Выбрать…</option value="select">Чтение данных</option><option value="insert">Добавление записи</option><option value="update">Изменение записи</option><option value="delete">Удаление записи</option><option value="create">Создание таблицы</option></select></label></div>
       <div class="editor panel"><div class="editor-heading"><span><span class="dot"></span> <span id="query-database">master</span> <span class="muted">/ query.sql</span></span><span class="muted">T-SQL</span></div><label class="sr-only" for="sql-editor">SQL-запрос</label><textarea id="sql-editor" spellcheck="false">SELECT name, state_desc, create_date
 FROM sys.databases
-ORDER BY name;</textarea><div class="editor-footer"><span class="muted">⌘ / Ctrl + Enter · выполнить <span class="desktop-hint">· без разделителя GO</span></span><button id="run-query" class="button primary" disabled>▶ Выполнить</button></div></div>
+ORDER BY name;</textarea><div class="editor-footer"><span class="muted">⌘ / Ctrl + Enter · выполнить <span class="desktop-hint">· GO поддерживается</span></span><button id="run-query" class="button primary" disabled>▶ Выполнить</button></div></div>
       <div class="query-warning">SQL выполняется с правами sa. Изменения применяются сразу. Для UPDATE и DELETE проверяйте условие WHERE.</div>
       <section class="panel results"><div class="panel-head"><h2>Результат</h2><div class="actions"><span id="query-stats" class="muted"></span><button id="export-csv" class="button" disabled>↓ CSV</button></div></div><div id="result-tabs" class="detail-tabs" hidden></div><div id="query-result" class="data-scroll"><div class="empty small"><span class="empty-symbol">⌘</span><h3>Готово к запросам</h3><p>Напишите SQL и нажмите «Выполнить».</p></div></div><pre id="query-messages" hidden></pre></section>
     </section>
