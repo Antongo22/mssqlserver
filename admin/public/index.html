@@ -6,7 +6,9 @@
   <meta name="description" content="Локальное управление базами Microsoft SQL Server">
   <link rel="icon" type="image/svg+xml" href="/icon.svg">
   <meta name="theme-color" content="#335cdb">
+  <script src="/theme.js"></script>
   <link rel="stylesheet" href="/style.css"><link rel="stylesheet" href="/advanced.css"><link rel="stylesheet" href="/create-table-fks.css"><script src="/editor.js" defer></script><script src="/app.js" defer></script><script src="/create-table-fks.js" defer></script><script src="/advanced.js" defer></script>
+  <link rel="stylesheet" href="/theme.css">
 </head>
 <body>
 <aside class="sidebar">
@@ -19,7 +21,7 @@
   <div class="sidebar-footer"><span class="dot"></span> Docker · локальный сервер<small id="server-version">Microsoft SQL Server</small></div>
 </aside>
 <main>
-  <header class="topbar"><span>Рабочее пространство <span class="slash">/</span> <strong id="breadcrumb">SQL Server</strong></span><span class="user-badge">sa <span>Администратор</span></span></header>
+  <header class="topbar"><span>Рабочее пространство <span class="slash">/</span> <strong id="breadcrumb">SQL Server</strong></span><div class="topbar-actions"><button class="button" id="theme-toggle" type="button" aria-label="Переключить тему" aria-pressed="false"><svg class="theme-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><path d="M20.5 14A8.5 8.5 0 0 1 10 3.5 8.5 8.5 0 1 0 20.5 14Z"/></svg><svg class="theme-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2m0 16v2M2 12h2m16 0h2M5 5l1.5 1.5m11 11L19 19M5 19l1.5-1.5m11-11L19 5"/></svg><span id="theme-label">Тёмная тема</span></button><span class="user-badge">sa <span>Администратор</span></span></div></header>
   <div class="workspace">
     <section class="page-heading"><div><div class="eyebrow">ОБОЗРЕВАТЕЛЬ БАЗЫ</div><h1 id="database-title">Выберите базу</h1><p id="database-meta" class="muted">Подключаемся к локальному SQL Server</p></div><button id="delete-database" class="button danger subtle" disabled>Удалить базу</button></section>
     <div id="notice" role="status" hidden></div>

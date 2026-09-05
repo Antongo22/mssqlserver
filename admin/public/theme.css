@@ -1,0 +1,97 @@
+:root {
+  --surface-subtle: #f8fafc;
+  --surface-hover: #f0f3f9;
+  --surface-selected: #fafbff;
+  --soft-line: #eef1f6;
+  --action: #335cdb;
+  --action-hover: #274ac0;
+  --danger-action: #b63241;
+  --danger-line: #edcbd0;
+  --code: #24468e;
+  --selection: #dce6ff;
+  --success: #1e7454;
+  --success-bg: #eaf7f1;
+  --success-line: #bddfce;
+  --error-bg: #fff0f1;
+  --warning: #775711;
+  --warning-bg: #fff8e8;
+  --warning-line: #e5cf95;
+  --sidebar-bg: #101c32;
+  --sidebar-surface: #1a2842;
+}
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --bg: #101722;
+  --surface: #182230;
+  --ink: #e4eaf3;
+  --muted: #a2b0c6;
+  --line: #334156;
+  --blue: #91adff;
+  --blue-soft: #243656;
+  --red: #ff8998;
+  --surface-subtle: #1c2838;
+  --surface-hover: #28364a;
+  --surface-selected: #233550;
+  --soft-line: #2a374a;
+  --action: #4163ce;
+  --action-hover: #3555ba;
+  --danger-action: #b63249;
+  --danger-line: #764151;
+  --code: #bdd0ff;
+  --selection: #334f7b;
+  --success: #7ddbbb;
+  --success-bg: #163830;
+  --success-line: #2d6654;
+  --error-bg: #3d2530;
+  --warning: #f0ce88;
+  --warning-bg: #352e20;
+  --warning-line: #6c5832;
+  --sidebar-bg: #0c1320;
+  --sidebar-surface: #172235;
+}
+:root[data-theme="light"] { color-scheme: light; }
+.topbar-actions { display: flex; align-items: center; gap: 12px; flex-shrink: 0; }
+#theme-toggle { display: inline-flex; align-items: center; gap: 7px; font-size: 13px; padding: 8px 10px; }
+#theme-toggle svg { width: 18px; height: 18px; flex-shrink: 0; }
+.theme-sun { display: none; }
+[data-theme="dark"] .theme-sun { display: block; }
+[data-theme="dark"] .theme-moon { display: none; }
+.sidebar { background: var(--sidebar-bg); }
+.connection { background: var(--sidebar-surface); }
+.panel, .table-card, .empty, .button, dialog, .history-item, .query-document,
+.fk-mapping, .statusbar { background-color: var(--surface); }
+input, select, textarea { color: var(--ink); background-color: var(--surface); }
+input::placeholder, textarea::placeholder { color: var(--muted); opacity: .85; }
+.search input { background: transparent; color: #dce4f5; }
+.search input::placeholder { color: #98a9c6; }
+.button:hover { background: var(--surface-hover); }
+.button.primary { background: var(--action); border-color: var(--action); color: #fff; }
+.button.primary:hover { background: var(--action-hover); border-color: var(--action-hover); }
+.button.danger { color: var(--red); border-color: var(--danger-line); }
+.button.danger.primary { background: var(--danger-action); color: #fff; }
+.button.subtle { background: transparent; }
+.user-badge, th, .editor-heading, .editor-footer, #query-messages, .data-tools,
+.fk-card { background: var(--surface-subtle); }
+th { color: var(--muted); }
+th, td { border-color: var(--soft-line); }
+tbody tr:hover { background: var(--surface-selected); }
+.table-card:hover, .table-card.selected { background: var(--surface-selected); border-color: var(--blue); }
+.query-document.active, .history-item:hover { background: var(--blue-soft); }
+.tab span, .empty-symbol { background: var(--blue-soft); color: var(--blue); }
+.empty { border-color: var(--line); }
+.null, .table-card .arrow { color: var(--muted); }
+#sql-editor { color: var(--code); background: var(--surface); }
+.fk-sql { background: var(--blue-soft); color: var(--code); }
+.query-warning { color: var(--warning); }
+.fk-action-note { background: var(--warning-bg); color: var(--warning); border-color: var(--warning-line); }
+.service-cards span { color: var(--success); }
+#notice { background: var(--success-bg); color: var(--success); border-color: var(--success-line); }
+#notice.error { background: var(--error-bg); color: var(--red); border-color: var(--danger-line); }
+.cm-editor.cm-focused { outline: 2px solid var(--blue); }
+input[type="checkbox"] { accent-color: var(--action); }
+dialog::backdrop { background: #07101db3; }
+@media (max-width: 700px) {
+  #theme-label { display: none; }
+  .topbar-actions { gap: 6px; }
+  .topbar > span { min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+}
