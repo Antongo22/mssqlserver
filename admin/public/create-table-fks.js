@@ -34,8 +34,25 @@ function mountForeignKeyEditor(database) {
     root.querySelector('#foreign-key-list').append(element);
     const target = element.querySelector('.fk-target'), mappings = element.querySelector('.fk-mappings');
     const selected = new Map();
+    const savedMappings = new Map();
     let keyId = null;
     const currentKey = () => keys.find(k => k.id === keyId);
+    function createMappedColumn(index) {
+      const key = currentKey();
+      if (!key) return;
+      const row = localColumns().find(l => !l.name && !l.row.querySelector('.column-pk').checked)?.row || addColumn();
+      const base = `${key.table}_${key.columns[index].name}`.slice(0,115);
+      const names = localColumns().map(l => l.name.toLowerCase());
+      let name = base, suffix = 2;
+      while (names.includes(name.toLowerCase())) name = `${base}_${suffix++}`;
+      row.querySelector('.column-name').value = name;
+      row.querySelector('.column-auto').checked = false;
+      const type = key.columns[index].type, typeSelect = row.querySelector('.column-type');
+      if (![...typeSelect.options].some(o => o.value === type)) typeSelect.add(new Option(type,type));
+      typeSelect.value = type;
+      selected.set(index,row.dataset.columnId);
+      return row;
+    }
     const actionNote = document.createElement('p');
     actionNote.className = 'fk-action-note'; actionNote.setAttribute('role','status');
     element.querySelector('.builder-sort').after(actionNote);
@@ -72,7 +89,7 @@ function mountForeignKeyEditor(database) {
     function renderMappings() {
       const key = currentKey();
       if (!key) { mappings.innerHTML = '<p class="muted">Выберите родительский PK.</p>'; updateActions(); preview(); return; }
-      mappings.innerHTML = `<p class="muted">${key.columns.length > 1 ? 'Составной PK: сопоставьте каждый столбец в указанном порядке.' : 'Выберите столбец новой таблицы или добавьте его с нужным типом.'}</p>` + key.columns.map((c,i) => `<div class="fk-mapping"><div><strong>${esc(key.schema + '.' + key.table + '.' + c.name)}</strong><small>${esc(c.type)}</small></div><span class="fk-arrow">←</span><div><select required data-map="${i}" aria-label="Локальный столбец для ${esc(c.name)}"></select><div class="fk-map-actions"><button type="button" class="button" data-new-column="${i}">＋ Новый столбец</button><button type="button" class="button" data-match-type="${i}">Применить тип PK</button></div><small class="fk-type-note" data-type-note="${i}"></small></div></div>`).join('');
+      mappings.innerHTML = `<p class="muted">Столбцы FK добавляются автоматически с типами выбранного PK и без AUTO. Их имена можно изменить в списке столбцов выше или выбрать другие столбцы ниже.</p>` + key.columns.map((c,i) => `<div class="fk-mapping"><div><strong>${esc(key.schema + '.' + key.table + '.' + c.name)}</strong><small>${esc(c.type)}</small></div><span class="fk-arrow">←</span><div><select required data-map="${i}" aria-label="Локальный столбец для ${esc(c.name)}"></select><div class="fk-map-actions"><button type="button" class="button" data-new-column="${i}">＋ Новый столбец</button><button type="button" class="button" data-match-type="${i}">Применить тип PK</button></div><small class="fk-type-note" data-type-note="${i}"></small></div></div>`).join('');
       updateLocals();
     }
     function refreshTarget() {
@@ -98,7 +115,19 @@ function mountForeignKeyEditor(database) {
     cards.add(card);
     element.querySelector('.remove-fk').onclick = () => { cards.delete(card); element.remove(); };
     element.querySelector('.fk-search').oninput = refreshTarget;
-    target.onchange = () => { keyId = target.value ? Number(target.value) : null; selected.clear(); renderMappings(); };
+    target.onchange = () => {
+      if (keyId !== null) savedMappings.set(keyId,new Map(selected));
+      keyId = target.value ? Number(target.value) : null;
+      selected.clear();
+      const key = currentKey(), saved = savedMappings.get(keyId);
+      if (key?.supported) key.columns.forEach((column,index) => {
+        const previousId = saved?.get(index);
+        if (localColumns().some(l => l.id === previousId && l.name)) selected.set(index,previousId);
+        else createMappedColumn(index);
+      });
+      renderMappings();
+      for (const card of cards) card.updateLocals();
+    };
     element.addEventListener('input', preview);
     element.querySelector('.fk-on-delete').onchange = element.querySelector('.fk-on-update').onchange = () => { updateActions(); preview(); };
     mappings.addEventListener('change', event => {
@@ -111,12 +140,7 @@ function mountForeignKeyEditor(database) {
       const key = currentKey(); if (!key) return;
       let local = localColumns().find(l => l.id === selected.get(index));
       if (create) {
-        const row = localColumns().find(l => !l.name && !l.row.querySelector('.column-pk').checked)?.row || addColumn();
-        const base = `${key.table}_${key.columns[index].name}`.slice(0,115), names = localColumns().map(l => l.name.toLowerCase());
-        let name = base, suffix = 2; while (names.includes(name.toLowerCase())) name = `${base}_${suffix++}`;
-        row.querySelector('.column-name').value = name;
-        row.querySelector('.column-auto').checked = false;
-        selected.set(index,row.dataset.columnId); local = { row };
+        local = { row: createMappedColumn(index) };
       }
       if (!local) { notice('Сначала выберите локальный столбец.',true); return; }
       const select = local.row.querySelector('.column-type'), type = key.columns[index].type;
