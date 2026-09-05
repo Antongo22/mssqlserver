@@ -34,6 +34,7 @@ async function selectDatabase(name) {
   if (state.busy) throw new Error('Сначала завершите или отмените текущий SQL-запрос.');
   state.database = name; state.table = null; state.columns = []; state.data = null;
   const generation = ++state.generation;
+  document.dispatchEvent(new CustomEvent('database-changing'));
   const database = state.databases.find(d => d.name === name);
   $('database-title').textContent = name; $('breadcrumb').textContent = name; $('query-database').textContent = name;
   $('database-meta').textContent = `${database.state} · ${Number(database.sizeMB).toLocaleString('ru-RU')} МБ · ${database.collation || '—'}`;
@@ -88,7 +89,12 @@ function showStructure() {
   }));
 }
 function tab(name) {
-  for (const id of ['tables', 'query', 'objects', 'security', 'backups', 'monitor', 'jobs', 'settings']) { $(id + '-panel').hidden = id !== name; $(id + '-tab').classList.toggle('active', id === name); $(id + '-tab').setAttribute('aria-selected', String(id === name)); }
+  for (const button of document.querySelectorAll('.tabs [role="tab"]')) {
+    const active = button.id === name + '-tab';
+    $(button.getAttribute('aria-controls')).hidden = !active;
+    button.classList.toggle('active', active); button.setAttribute('aria-selected', String(active));
+  }
+  document.dispatchEvent(new CustomEvent('workspace-tab-changed', { detail: name }));
 }
 const selectedTableName = () => state.table ? `${quote(state.table.schema)}.${quote(state.table.name)}` : '[dbo].[TableName]';
 function template(type) {

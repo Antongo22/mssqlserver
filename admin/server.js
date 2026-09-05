@@ -7,6 +7,7 @@ import { installCatalog } from './lib/catalog.js';
 import { installTables } from './lib/tables.js';
 import { installOperations } from './lib/operations.js';
 import { installCreateTable } from './lib/create-table.js';
+import { installDiagram } from './lib/diagram.js';
 
 const app = express();
 const port = Number(process.env.PORT || 3000);
@@ -105,6 +106,7 @@ app.get('/api/databases/:database/table', async (req, res) => {
 const services = { withDb, sql, identifier, fail };
 installCreateTable(app, services);
 installCatalog(app, services);
+installDiagram(app, services);
 installTables(app, services);
 installOperations(app, services);
 app.post('/api/query', async (req, res) => {

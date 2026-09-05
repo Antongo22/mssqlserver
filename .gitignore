@@ -1,3 +1,5 @@
 .env
 node_modules/
 admin/public/editor.js
+admin/public/diagram.js
+admin/public/elk-worker.min.js

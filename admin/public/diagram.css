@@ -1,0 +1,51 @@
+#diagram-panel { min-width: 0; }
+.diagram-tools { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
+.diagram-search { flex: 1; min-width: 180px; max-width: 320px; }
+.diagram-search input { width: 100%; }
+#diagram-table-select { min-width: 160px; max-width: 260px; }
+.diagram-zoom { display: flex; align-items: center; gap: 5px; margin-left: auto; }
+.diagram-zoom .button { padding: 8px 11px; }
+#diagram-scale { min-width: 49px; text-align: center; font-size: 12px; color: var(--muted); font-variant-numeric: tabular-nums; }
+#diagram-status { font-size: 12px; min-height: 18px; overflow-wrap: anywhere; }
+.diagram-workspace { display: grid; grid-template-columns: minmax(0, 1fr) 260px; border: 1px solid var(--line); border-radius: 10px; overflow: hidden; background: var(--surface); }
+.diagram-viewport { min-width: 0; height: clamp(460px, 66vh, 900px); position: relative; overflow: hidden; background-color: var(--bg); background-image: radial-gradient(var(--line) 1px, transparent 1px); background-size: 20px 20px; touch-action: none; cursor: grab; }
+.diagram-viewport:focus-visible { outline: 2px solid var(--blue); outline-offset: -3px; }
+.diagram-viewport.dragging, .diagram-viewport.dragging * { cursor: grabbing; }
+#diagram-svg { display: block; width: 100%; height: 100%; user-select: none; }
+.diagram-message { position: absolute; inset: 0; display: grid; place-items: center; padding: 30px; text-align: center; color: var(--muted); font-size: 14px; }
+.diagram-inspector { min-width: 0; max-height: clamp(460px, 66vh, 900px); overflow-y: auto; border-left: 1px solid var(--line); padding: 16px; color: var(--ink); background: var(--surface); font-size: 12px; line-height: 1.7; overflow-wrap: anywhere; }
+.diagram-inspector h3 { margin: 0; font-size: 15px; line-height: 1.5; }
+.diagram-inspector h4 { font-size: 12px; margin: 16px 0 8px; }
+.diagram-inspector p { margin: 8px 0 16px; }
+.diagram-inspector .muted, .diagram-inspector small { font-size: 11px; }
+.diagram-inspector-head { border-bottom: 1px solid var(--line); margin-bottom: 14px; }
+.diagram-inspector-head p { color: var(--muted); }
+.diagram-back { background: transparent; color: var(--blue); border: 0; padding: 0 0 12px; font-size: 12px; }
+.diagram-relation { display: block; width: 100%; text-align: left; color: var(--ink); border: 1px solid var(--line); background: var(--surface-subtle); padding: 9px 10px; border-radius: 6px; margin: 7px 0; font-size: 12px; overflow-wrap: anywhere; line-height: 1.5; }
+.diagram-relation:hover { border-color: var(--blue); background: var(--blue-soft); }
+.diagram-relation strong, .diagram-relation small, .diagram-columns strong, .diagram-columns small { display: block; }
+.diagram-relation small, .diagram-columns small { color: var(--muted); }
+.diagram-columns { border-bottom: 1px solid var(--line); margin-bottom: 10px; }
+.diagram-columns summary { cursor: pointer; font-weight: 600; padding: 8px 0; }
+.diagram-columns > div { padding: 7px 0; border-top: 1px solid var(--soft-line); }
+.diagram-inspector .diagram-warning { color: var(--warning); }
+.diagram-legend { display: flex; flex-wrap: wrap; gap: 8px 18px; margin: 14px 0 8px; color: var(--muted); font-size: 11px; }
+.diagram-legend b { color: var(--blue); }
+.diagram-help { font-size: 12px; line-height: 1.7; margin: 8px 0; }
+#diagram-panel:fullscreen, #diagram-panel.diagram-expanded { background: var(--bg); padding: 20px; overflow: auto; }
+#diagram-panel.diagram-expanded { position: fixed; inset: 0; z-index: 20; }
+#diagram-panel:fullscreen .diagram-viewport, #diagram-panel:fullscreen .diagram-inspector,
+#diagram-panel.diagram-expanded .diagram-viewport, #diagram-panel.diagram-expanded .diagram-inspector { height: calc(100vh - 245px); max-height: none; min-height: 300px; }
+@media (max-width: 1100px) {
+  .diagram-workspace { grid-template-columns: minmax(0, 1fr); }
+  .diagram-inspector { border-left: 0; border-top: 1px solid var(--line); max-height: 280px; }
+  #diagram-panel:fullscreen .diagram-inspector, #diagram-panel.diagram-expanded .diagram-inspector { height: auto; min-height: 0; max-height: 180px; }
+  #diagram-panel:fullscreen .diagram-viewport, #diagram-panel.diagram-expanded .diagram-viewport { height: calc(100vh - 425px); }
+}
+@media (max-width: 700px) {
+  #diagram-panel .section-toolbar .actions { flex-wrap: wrap; }
+  .diagram-tools { gap: 8px; }
+  .diagram-search { max-width: none; }
+  #diagram-table-select { width: 100%; max-width: none; }
+  .diagram-viewport { height: 460px; }
+}
