@@ -6,6 +6,7 @@ import { executeScript, running } from './lib/query.js';
 import { installCatalog } from './lib/catalog.js';
 import { installTables } from './lib/tables.js';
 import { installOperations } from './lib/operations.js';
+import { installCreateTable } from './lib/create-table.js';
 
 const app = express();
 const port = Number(process.env.PORT || 3000);
@@ -101,22 +102,8 @@ app.get('/api/databases/:database/table', async (req, res) => {
   if (!result.recordset.length) throw fail('Таблица не найдена.', 404);
   res.json(result.recordset);
 });
-const types = new Set(['INT', 'BIGINT', 'NVARCHAR(255)', 'NVARCHAR(MAX)', 'DECIMAL(18,2)', 'BIT', 'DATE', 'DATETIME2', 'UNIQUEIDENTIFIER']);
-app.post('/api/databases/:database/tables', async (req, res) => {
-  const table = identifier(req.body.name);
-  const columns = req.body.columns;
-  if (!Array.isArray(columns) || !columns.length || columns.length > 50) throw fail('Добавьте от 1 до 50 столбцов.');
-  if (columns.filter(c => c.primaryKey).length > 1) throw fail('В конструкторе можно выбрать один первичный ключ.');
-  const definitions = columns.map(c => {
-    if (!types.has(c.type)) throw fail('Неподдерживаемый тип столбца.');
-    if (c.identity && !['INT', 'BIGINT'].includes(c.type)) throw fail('Автонумерация доступна только для INT и BIGINT.');
-    if (c.primaryKey && c.type === 'NVARCHAR(MAX)') throw fail('NVARCHAR(MAX) нельзя использовать как первичный ключ.');
-    return `${identifier(c.name)} ${c.type}${c.identity ? ' IDENTITY(1,1)' : ''} ${c.primaryKey || !c.nullable ? 'NOT NULL' : 'NULL'}${c.primaryKey ? ' PRIMARY KEY' : ''}`;
-  });
-  await withDb(req.params.database, p => p.request().batch(`CREATE TABLE ${identifier(req.body.schema || 'dbo')}.${table} (${definitions.join(',')})`));
-  res.status(201).json({ ok: true });
-});
 const services = { withDb, sql, identifier, fail };
+installCreateTable(app, services);
 installCatalog(app, services);
 installTables(app, services);
 installOperations(app, services);

@@ -4,11 +4,13 @@
   <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1">
   <title>MSSQL Studio — локальная консоль</title>
   <meta name="description" content="Локальное управление базами Microsoft SQL Server">
-  <link rel="stylesheet" href="/style.css"><link rel="stylesheet" href="/advanced.css"><script src="/editor.js" defer></script><script src="/app.js" defer></script><script src="/advanced.js" defer></script>
+  <link rel="icon" type="image/svg+xml" href="/icon.svg">
+  <meta name="theme-color" content="#335cdb">
+  <link rel="stylesheet" href="/style.css"><link rel="stylesheet" href="/advanced.css"><link rel="stylesheet" href="/create-table-fks.css"><script src="/editor.js" defer></script><script src="/app.js" defer></script><script src="/create-table-fks.js" defer></script><script src="/advanced.js" defer></script>
 </head>
 <body>
 <aside class="sidebar">
-  <div class="brand"><span class="brand-icon">▤</span><div>MSSQL <strong>Studio</strong><small>ЛОКАЛЬНАЯ КОНСОЛЬ</small></div></div>
+  <div class="brand"><img class="brand-icon" src="/icon.svg" width="40" height="40" alt=""><div>MSSQL <strong>Studio</strong><small>ЛОКАЛЬНАЯ КОНСОЛЬ</small></div></div>
   <div class="connection"><span class="dot"></span><div>SQL Server 2022<small id="connection-status">Подключение…</small></div><span class="local-tag">LOCAL</span></div>
   <div class="side-heading"><span>БАЗЫ ДАННЫХ</span><button id="refresh" class="icon-button" title="Обновить базы" aria-label="Обновить базы">↻</button></div>
   <label class="search"><span>⌕</span><input id="db-search" type="search" placeholder="Найти базу…" aria-label="Найти базу"></label>

@@ -172,20 +172,25 @@ function deleteDatabase() {
 const types = ['INT', 'BIGINT', 'NVARCHAR(255)', 'NVARCHAR(MAX)', 'DECIMAL(18,2)', 'BIT', 'DATE', 'DATETIME2', 'UNIQUEIDENTIFIER'];
 function addColumn(first = false) {
   const row = document.createElement('div'); row.className = 'column-row';
+  row.dataset.columnId = crypto.randomUUID();
   row.innerHTML = `<input type="text" class="column-name" aria-label="Название столбца" placeholder="Название" required maxlength="128" value="${first ? 'Id' : ''}"><select class="column-type" aria-label="Тип столбца">${types.map(t => `<option ${!first && t === 'NVARCHAR(255)' ? 'selected' : ''}>${t}</option>`).join('')}</select><label>NULL<input type="checkbox" class="column-null" ${first ? '' : 'checked'}></label><label>PK<input type="checkbox" class="column-pk" ${first ? 'checked' : ''}></label><label>AUTO<input type="checkbox" class="column-auto" ${first ? 'checked' : ''}></label><button type="button" class="icon-button remove-column" aria-label="Удалить столбец">×</button>`;
   $('columns').append(row);
+  return row;
 }
 function newTable() {
   if (!state.database) return;
   const database = state.database;
-  modal('Новая таблица', `<label class="field">Название таблицы<input name="name" required maxlength="128" placeholder="Например, Products"><small>База: ${esc(database)}. PK — первичный ключ, AUTO — автоинкремент.</small></label><label class="field">Схема<input name="schema" value="dbo" required maxlength="128"></label><div id="columns"></div><button type="button" class="button" id="add-column">＋ Столбец</button>`, async form => {
+  let foreignKeyEditor;
+  modal('Новая таблица', `<label class="field">Название таблицы<input name="name" required maxlength="128" placeholder="Например, Products"><small>База: ${esc(database)}. PK — первичный ключ, AUTO — автоинкремент.</small></label><label class="field">Схема<input name="schema" value="dbo" required maxlength="128"></label><div id="columns"></div><button type="button" class="button" id="add-column">＋ Столбец</button><section id="new-table-fks"></section>`, async form => {
     const columns = [...$('columns').children].map(row => ({ name: row.querySelector('.column-name').value.trim(), type: row.querySelector('.column-type').value, nullable: row.querySelector('.column-null').checked, primaryKey: row.querySelector('.column-pk').checked, identity: row.querySelector('.column-auto').checked }));
     const name = new FormData(form).get('name').trim(), schema = new FormData(form).get('schema').trim();
-    await api(`/api/databases/${encodeURIComponent(database)}/tables`, { method: 'POST', body: { name, schema, columns } });
+    const foreignKeys = foreignKeyEditor.read();
+    await api(`/api/databases/${encodeURIComponent(database)}/tables`, { method: 'POST', body: { name, schema, columns, foreignKeys } });
     await selectDatabase(database); const created = state.tables.find(t => t.schema === schema && t.name === name); if (created) await openTable(created);
     notice(`Таблица «${name}» создана.`);
   }, 'Создать таблицу', false, true);
   addColumn(true); addColumn(); $('add-column').onclick = () => addColumn();
+  foreignKeyEditor = mountForeignKeyEditor(database);
 }
 $('modal-form').onsubmit = async event => {
   event.preventDefault(); $('modal-submit').disabled = true; $('modal-error').hidden = true;
