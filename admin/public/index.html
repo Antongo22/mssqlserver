@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>MSSQL Studio — локальная консоль</title>
+  <meta name="description" content="Локальное управление базами Microsoft SQL Server">
+  <link rel="stylesheet" href="/style.css"><script src="/app.js" defer></script>
+</head>
+<body>
+<aside class="sidebar">
+  <div class="brand"><span class="brand-icon">▤</span><div>MSSQL <strong>Studio</strong><small>ЛОКАЛЬНАЯ КОНСОЛЬ</small></div></div>
+  <div class="connection"><span class="dot"></span><div>SQL Server 2022<small id="connection-status">Подключение…</small></div><span class="local-tag">LOCAL</span></div>
+  <div class="side-heading"><span>БАЗЫ ДАННЫХ</span><button id="refresh" class="icon-button" title="Обновить базы" aria-label="Обновить базы">↻</button></div>
+  <label class="search"><span>⌕</span><input id="db-search" type="search" placeholder="Найти базу…" aria-label="Найти базу"></label>
+  <nav id="databases" aria-label="Базы данных"><p class="muted">Загрузка…</p></nav>
+  <button id="new-database" class="button primary full">＋ Создать базу</button>
+  <div class="sidebar-footer"><span class="dot"></span> Docker · локальный сервер<small id="server-version">Microsoft SQL Server</small></div>
+</aside>
+<main>
+  <header class="topbar"><span>Рабочее пространство <span class="slash">/</span> <strong id="breadcrumb">SQL Server</strong></span><span class="user-badge">sa <span>Администратор</span></span></header>
+  <div class="workspace">
+    <section class="page-heading"><div><div class="eyebrow">ОБОЗРЕВАТЕЛЬ БАЗЫ</div><h1 id="database-title">Выберите базу</h1><p id="database-meta" class="muted">Подключаемся к локальному SQL Server</p></div><button id="delete-database" class="button danger subtle" disabled>Удалить базу</button></section>
+    <div id="notice" role="status" hidden></div>
+    <div class="tabs" role="tablist" aria-label="Разделы базы"><button class="tab active" id="tables-tab" role="tab" aria-selected="true" aria-controls="tables-panel">▦ &nbsp; Таблицы <span id="table-count">0</span></button><button class="tab" id="query-tab" role="tab" aria-selected="false" aria-controls="query-panel">⌘ &nbsp; SQL-редактор</button></div>
+    <section id="tables-panel" role="tabpanel" aria-labelledby="tables-tab">
+      <div class="section-toolbar"><div><h2>Таблицы базы</h2><p class="muted">Структура и данные в одном месте</p></div><button id="new-table" class="button primary" disabled>＋ Создать таблицу</button></div>
+      <div id="tables-list" class="table-list"></div>
+      <section id="table-detail" class="panel" hidden><div class="panel-head"><h2 id="table-title"></h2><div class="actions"><button class="button" id="insert-template">＋ Добавить запись</button><button class="button" id="select-template">Открыть в SQL</button></div></div><div class="detail-tabs"><button id="show-data" class="chip active">Данные</button><button id="show-structure" class="chip">Структура</button><span id="data-note" class="muted">Первые 100 записей</span></div><div id="table-content" class="data-scroll"></div></section>
+    </section>
+    <section id="query-panel" role="tabpanel" aria-labelledby="query-tab" hidden>
+      <div class="section-toolbar"><div><h2>SQL-редактор</h2><p class="muted">Запрос выполняется в выбранной базе</p></div><label class="template-label">Шаблон <select id="query-template"><option value="">Выбрать…</option value="select">Чтение данных</option><option value="insert">Добавление записи</option><option value="update">Изменение записи</option><option value="delete">Удаление записи</option><option value="create">Создание таблицы</option></select></label></div>
+      <div class="editor panel"><div class="editor-heading"><span><span class="dot"></span> <span id="query-database">master</span> <span class="muted">/ query.sql</span></span><span class="muted">T-SQL</span></div><label class="sr-only" for="sql-editor">SQL-запрос</label><textarea id="sql-editor" spellcheck="false">SELECT name, state_desc, create_date
+FROM sys.databases
+ORDER BY name;</textarea><div class="editor-footer"><span class="muted">⌘ / Ctrl + Enter · выполнить <span class="desktop-hint">· без разделителя GO</span></span><button id="run-query" class="button primary" disabled>▶ Выполнить</button></div></div>
+      <div class="query-warning">SQL выполняется с правами sa. Изменения применяются сразу. Для UPDATE и DELETE проверяйте условие WHERE.</div>
+      <section class="panel results"><div class="panel-head"><h2>Результат</h2><div class="actions"><span id="query-stats" class="muted"></span><button id="export-csv" class="button" disabled>↓ CSV</button></div></div><div id="result-tabs" class="detail-tabs" hidden></div><div id="query-result" class="data-scroll"><div class="empty small"><span class="empty-symbol">⌘</span><h3>Готово к запросам</h3><p>Напишите SQL и нажмите «Выполнить».</p></div></div><pre id="query-messages" hidden></pre></section>
+    </section>
+  </div>
+  <footer class="statusbar"><span><span class="dot"></span> <span id="footer-status">Подключение…</span></span><span>Microsoft SQL Server · Developer</span></footer>
+</main>
+<dialog id="modal"><form id="modal-form"><div class="modal-heading"><h2 id="modal-title"></h2><button type="button" class="icon-button" id="close-modal" aria-label="Закрыть">×</button></div><div id="modal-body"></div><p id="modal-error" class="error-text" role="alert" hidden></p><div class="modal-actions"><button type="button" id="cancel-modal" class="button">Отмена</button><button type="submit" id="modal-submit" class="button primary">Создать</button></div></form></dialog>
+</body></html>

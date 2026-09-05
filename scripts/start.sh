@@ -10,3 +10,4 @@ fi
 
 docker compose up -d --build --wait --wait-timeout 300
 echo 'SQL Server готов. Проверка: ./scripts/check.sh'
+echo 'GUI: http://localhost:3001 (или ADMIN_PORT из .env)'

@@ -1,0 +1,8 @@
+{
+  "name": "mssql-studio-local",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": { "start": "node server.js", "test": "node --test test/*.test.js" },
+  "dependencies": { "express": "^5.1.0", "mssql": "^12.0.0" }
+}

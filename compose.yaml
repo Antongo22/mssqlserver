@@ -23,5 +23,23 @@ services:
       retries: 30
       start_period: 30s
 
+  admin:
+    build: ./admin
+    environment:
+      MSSQL_HOST: mssql
+      MSSQL_SA_PASSWORD: ${MSSQL_SA_PASSWORD:?Set MSSQL_SA_PASSWORD in .env}
+    ports:
+      - "127.0.0.1:${ADMIN_PORT:-3001}:3000"
+    depends_on:
+      mssql:
+        condition: service_healthy
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://localhost:3000/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 15s
+      timeout: 15s
+      retries: 5
+      start_period: 15s
+
 volumes:
   mssql_data:
