@@ -85,6 +85,9 @@ export function installCreateTable(app, { withDb, identifier: q, fail }) {
         });
         const onDelete = fk.onDelete || 'NO ACTION', onUpdate = fk.onUpdate || 'NO ACTION';
         if (![onDelete,onUpdate].every(a => ['NO ACTION','CASCADE','SET NULL','SET DEFAULT'].includes(a))) throw fail('Некорректное действие внешнего ключа.');
+        if (local.some(c => c.identity) && (onUpdate !== 'NO ACTION' || onDelete !== 'NO ACTION')) {
+          throw fail('В FK выбран столбец с AUTO (IDENTITY). Для него и при обновлении, и при удалении выберите NO ACTION. Для обычной связи добавьте отдельный столбец без AUTO кнопкой «＋ Новый столбец».');
+        }
         if ([onDelete,onUpdate].includes('SET NULL') && local.some(c => !c.nullable || c.primaryKey)) throw fail('Для SET NULL все столбцы внешнего ключа должны допускать NULL.');
         const constraint = fk.name?.trim() || `FK_${name}_${key.table}_${index+1}`.slice(0,128);
         return `CONSTRAINT ${q(constraint)} FOREIGN KEY (${fk.columns.map(q).join(',')}) REFERENCES ${q(key.schema)}.${q(key.table)} (${key.columns.map(c => q(c.name)).join(',')}) ON DELETE ${onDelete} ON UPDATE ${onUpdate}`;

@@ -48,6 +48,14 @@ test('create tables with live simple and composite PK references atomically', {t
     await attempt('MissingColumn',[{name:'Id',type:'INT'}],[{keyId:parent.id,columns:['NotThere']}]);
     await attempt('WrongNull',[{name:'Id',type:'INT'}],[{keyId:parent.id,columns:['Id'],onDelete:'SET NULL'}]);
     await attempt('BadAction',[{name:'Id',type:'INT'}],[{keyId:parent.id,columns:['Id'],onDelete:'CASCADE; DROP TABLE dbo.Child'}]);
+    const identityColumns=[{name:'Id',type:'INT',identity:true,primaryKey:true}];
+    const identityError=await call(root+'/tables','POST',{name:'IdentityInvalid',columns:identityColumns,foreignKeys:[{keyId:parent.id,columns:['Id'],onDelete:'CASCADE',onUpdate:'CASCADE'}]});
+    assert.equal(identityError.status,400);assert.match(identityError.data.error,/AUTO \(IDENTITY\)/);
+    assert.ok(!(await ok(root+'/tables')).some(t=>t.name==='IdentityInvalid'));
+    await ok(root+'/tables','POST',{name:'IdentityValid',columns:identityColumns,foreignKeys:[{keyId:parent.id,columns:['Id'],onDelete:'NO ACTION',onUpdate:'NO ACTION'}]});
+    await attempt('IdentityDeleteCascade',identityColumns,[{keyId:parent.id,columns:['Id'],onDelete:'CASCADE'}]);
+    await attempt('IdentitySetDefault',identityColumns,[{keyId:parent.id,columns:['Id'],onDelete:'SET DEFAULT'}]);
+    await query('DROP TABLE dbo.IdentityValid;');
     await query('DROP TABLE dbo.Child; DROP TABLE [sales space].[Parent]]];');
     await attempt('StaleKey',[{name:'Id',type:'INT'}],[{keyId:parent.id,columns:['Id']}]);
     const icon=await fetch(base+'/icon.svg');assert.equal(icon.status,200);assert.match(icon.headers.get('content-type'),/image\/svg\+xml/);
