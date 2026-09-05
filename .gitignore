@@ -1,4 +1,5 @@
 .env
+.studio/
 node_modules/
 admin/public/editor.js
 admin/public/diagram.js

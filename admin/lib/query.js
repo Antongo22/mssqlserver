@@ -1,4 +1,5 @@
 import sql from 'mssql';
+import { bindParameters } from './query-parameters.js';
 // GO is a client-side separator, but never inside a string, identifier or comment.
 export function splitBatches(source) {
   const batches = [];
@@ -67,7 +68,8 @@ export async function executeScript(pool, body, onStart = () => {}) {
       } else result.truncated = true;
     });
     request.on('info', info => { if (result.messages.length < 100) result.messages.push(info.message.slice(0, 4000)); });
-    const response = await request.batch(text);
+    const prefix = collect ? bindParameters(request, body.parameters, sql) : '';
+    const response = await request.batch(prefix + text);
     currentRequest = null;
     if (cancelled) throw new Error(reason);
     if (error) throw error;

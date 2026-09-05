@@ -1,65 +1,41 @@
-import { readdir, stat, unlink, chmod } from 'node:fs/promises';
+import { readdir, stat, unlink, chmod, mkdir } from 'node:fs/promises';
 import { createWriteStream } from 'node:fs';
 import { pipeline } from 'node:stream/promises';
 import { Transform } from 'node:stream';
 import { randomUUID } from 'node:crypto';
 import path from 'node:path';
 
-export function installOperations(app, { withDb, sql, identifier: q, fail }) {
-  const backupRoot = process.env.BACKUP_DIR || '/backups';
-  const serverRoot = '/var/opt/mssql/backups';
+export function installOperations(app, { withDb, sql, identifier: q, fail, backups }) {
+  app.use('/api/backups', async (req,res,next) => { try { await mkdir(backups.paths().local,{recursive:true}); next(); } catch(e) { next(e); } });
   const filename = value => {
     if (typeof value !== 'string' || !/^[a-zA-Z0-9_.-]+\.bak$/.test(value) || value.length>180) throw fail('Некорректное имя файла резервной копии.');
     return value;
   };
   app.get('/api/backups', async(req,res)=>{
-    const names=(await readdir(backupRoot)).filter(n=>n.endsWith('.bak'));
-    const files=await Promise.all(names.map(async name=>{const s=await stat(path.join(backupRoot,name));return {name,size:s.size,modified:s.mtime};}));
+    const names=(await readdir(backups.paths().local)).filter(n=>n.endsWith('.bak'));
+    const files=await Promise.all(names.map(async name=>{const s=await stat(path.join(backups.paths().local,name));return {name,size:s.size,modified:s.mtime};}));
     res.json(files.sort((a,b)=>b.modified-a.modified));
   });
   app.get('/api/backups/:file/download',async(req,res)=>{
-    res.download(path.join(backupRoot,filename(req.params.file)));
+    res.download(path.join(backups.paths().local,filename(req.params.file)));
   });
   app.delete('/api/backups/:file',async(req,res)=>{
     const file=filename(req.params.file);
     if(req.body.confirm!==file)throw fail('Подтвердите имя файла.');
-    await unlink(path.join(backupRoot,file));res.json({ok:true});
+    await unlink(path.join(backups.paths().local,file));res.json({ok:true});
   });
   app.post('/api/backups/upload',async(req,res)=>{
-    const name=`upload_${Date.now()}_${randomUUID()}.bak`,target=path.join(backupRoot,name);
+    const name=`upload_${Date.now()}_${randomUUID()}.bak`,target=path.join(backups.paths().local,name);
     let bytes=0;
     const limiter=new Transform({transform(chunk,encoding,callback){bytes+=chunk.length;callback(bytes>512*1024*1024?fail('Файл больше 512 МБ.'):null,chunk);}});
     try{await pipeline(req,limiter,createWriteStream(target,{flags:'wx',mode:0o660}));await chmod(target,0o660);res.status(201).json({name});}
     catch(error){await unlink(target).catch(()=>{});throw error;}
   });
-  app.post('/api/backups',async(req,res)=>{
-    const db=req.body.database;
-    const name=`backup_${String(db).replace(/[^a-zA-Z0-9_-]/g,'_').slice(0,50)}_${Date.now()}_${randomUUID()}.bak`;
-    await withDb('master',async p=>{
-      const request=new sql.Request(p,{requestTimeout:600000}).input('file',sql.NVarChar(400),`${serverRoot}/${name}`);
-      await request.batch(`BACKUP DATABASE ${q(db)} TO DISK=@file WITH COPY_ONLY,COMPRESSION,CHECKSUM,INIT;`);
-    });res.status(201).json({name});
-  });
-  app.post('/api/backups/:file/verify',async(req,res)=>{
-    await withDb('master',async p=>{const r=new sql.Request(p,{requestTimeout:600000}).input('file',sql.NVarChar(400),`${serverRoot}/${filename(req.params.file)}`);await r.batch('RESTORE VERIFYONLY FROM DISK=@file WITH CHECKSUM;');});res.json({ok:true});
-  });
+  app.post('/api/backups',async(req,res)=>res.status(201).json({name:await backups.create(req.body.database)}));
+  app.post('/api/backups/:file/verify',async(req,res)=>{await backups.verify(req.params.file);res.json({ok:true});});
   app.post('/api/backups/:file/restore',async(req,res)=>{
-    const name=req.body.database, full=q(name),file=filename(req.params.file);
-    if(req.body.confirm!==name)throw fail('Подтвердите имя новой базы.');
-    await withDb('master',async p=>{
-      const existing=await p.request().input('name',sql.NVarChar(128),name).query('SELECT DB_ID(@name) id');
-      if(existing.recordset[0].id!==null)throw fail('База уже существует. Восстановление выполняется только в новую базу.');
-      const listing=await p.request().input('file',sql.NVarChar(400),`${serverRoot}/${file}`).query('RESTORE FILELISTONLY FROM DISK=@file');
-      if(listing.recordset.some(f=>!['D','L'].includes(f.Type)))throw fail('Эта копия содержит FILESTREAM или другие специальные файлы. Используйте RESTORE через SQL.');
-      const request=new sql.Request(p,{requestTimeout:600000}).input('file',sql.NVarChar(400),`${serverRoot}/${file}`);
-      const id=randomUUID().replaceAll('-','');
-      const moves=listing.recordset.map((f,i)=>{
-        request.input('logical'+i,sql.NVarChar(128),f.LogicalName);
-        request.input('physical'+i,sql.NVarChar(400),`/var/opt/mssql/data/restore_${id}_${i}.${f.Type==='L'?'ldf':'mdf'}`);
-        return `MOVE @logical${i} TO @physical${i}`;
-      });
-      await request.batch(`RESTORE DATABASE ${full} FROM DISK=@file WITH ${moves.join(',')},RECOVERY,CHECKSUM;`);
-    });res.status(201).json({ok:true});
+    if(req.body.confirm!==req.body.database)throw fail('Подтвердите имя новой базы.');
+    await backups.restore(req.params.file,req.body.database);res.status(201).json({ok:true});
   });
   app.get('/api/monitor',async(req,res)=>{
     const r=await withDb('master',p=>p.request().query(`

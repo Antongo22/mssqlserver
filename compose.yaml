@@ -29,8 +29,10 @@ services:
     build: ./admin
     volumes:
       - mssql_backups:/backups
+      - studio_data:/config
     environment:
       MSSQL_HOST: mssql
+      STUDIO_DIR: /config
       MSSQL_SA_PASSWORD: ${MSSQL_SA_PASSWORD:?Set MSSQL_SA_PASSWORD in .env}
     ports:
       - "127.0.0.1:${ADMIN_PORT:-3001}:3000"
@@ -50,3 +52,5 @@ volumes:
     name: mssqlserver_mssql_data
   mssql_backups:
     name: mssqlserver_backups
+  studio_data:
+    name: mssqlserver_studio

@@ -1,4 +1,5 @@
 node_modules
+.studio
 test
 *.log
 .env

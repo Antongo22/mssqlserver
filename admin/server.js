@@ -7,7 +7,12 @@ import { installCatalog } from './lib/catalog.js';
 import { installTables } from './lib/tables.js';
 import { installOperations } from './lib/operations.js';
 import { installCreateTable } from './lib/create-table.js';
+import { installImportFile } from './lib/import-file.js';
+import { installSchemaTools } from './lib/schema-tools.js';
 import { installDiagram } from './lib/diagram.js';
+import { createStore } from './lib/settings-store.js';
+import { createBackups } from './lib/backups.js';
+import { createConnections } from './lib/connections.js';
 
 const app = express();
 const port = Number(process.env.PORT || 3000);
@@ -20,6 +25,8 @@ const config = {
   connectionTimeout: 10000, requestTimeout: 60000,
 };
 const fail = (message, status = 400) => Object.assign(new Error(message), { status });
+const store = await createStore(process.env.STUDIO_DIR || '.studio');
+const connections = createConnections({ store, config, sql, fail });
 function identifier(value) {
   if (typeof value !== 'string' || !value.trim() || value.length > 128 || /[\x00-\x1f]/.test(value)) {
     throw fail('Имя должно содержать от 1 до 128 символов без управляющих символов.');
@@ -28,7 +35,7 @@ function identifier(value) {
 }
 async function withDb(database, fn) {
   identifier(database);
-  const pool = new sql.ConnectionPool({ ...config, database });
+  const pool = new sql.ConnectionPool({ ...connections.config(), database });
   pool.on('error', () => {});
   try { await pool.connect(); return await fn(pool); }
   finally { await pool.close(); }
@@ -47,6 +54,8 @@ app.use((req, res, next) => {
   next();
 });
 app.use(express.json({ limit: '2mb' }));
+app.use('/api', connections.middleware);
+connections.install(app);
 app.get('/health', async (req, res) => {
   try { await withDb('master', p => p.request().query('SELECT 1 AS ok')); res.json({ ok: true }); }
   catch { res.status(503).json({ ok: false }); }
@@ -103,10 +112,14 @@ app.get('/api/databases/:database/table', async (req, res) => {
   if (!result.recordset.length) throw fail('Таблица не найдена.', 404);
   res.json(result.recordset);
 });
-const services = { withDb, sql, identifier, fail };
+const services = { withDb, sql, identifier, fail, connections, store };
+services.backups = createBackups(services);
+services.backups.install(app);
 installCreateTable(app, services);
 installCatalog(app, services);
 installDiagram(app, services);
+installSchemaTools(app, services);
+installImportFile(app);
 installTables(app, services);
 installOperations(app, services);
 app.post('/api/query', async (req, res) => {

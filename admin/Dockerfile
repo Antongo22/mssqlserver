@@ -9,6 +9,7 @@ COPY --chown=node:node diagram-entry.js ./
 COPY --chown=node:node public ./public
 RUN npm run build && npm prune --omit=dev
 # Use SQL Server's UID so uploaded .bak files are readable by both services.
+RUN mkdir -p /config && chown 10001:10001 /config && chmod 700 /config
 USER 10001:10001
 EXPOSE 3000
 CMD ["node", "server.js"]

@@ -3,6 +3,8 @@ import { EditorView, keymap, lineNumbers, highlightActiveLine, drawSelection } f
 import { defaultKeymap, history, historyKeymap, indentWithTab } from '@codemirror/commands';
 import { sql, MSSQL } from '@codemirror/lang-sql';
 import { autocompletion, completionKeymap } from '@codemirror/autocomplete';
+import { joinCompletion } from './lib/join-completion.js';
+let relationalModel;
 const textarea = document.getElementById('sql-editor');
 const language = new Compartment();
 const appearance = new Compartment();
@@ -24,6 +26,7 @@ const editor = new EditorView({
   state: EditorState.create({doc: textarea.value, extensions: [
     lineNumbers(), history(), drawSelection(), highlightActiveLine(),
     language.of(sql({ dialect: MSSQL, upperCaseKeywords: true })), autocompletion(),
+    MSSQL.language.data.of({ autocomplete: context => joinCompletion(context, relationalModel) }),
     keymap.of([{ key: 'Mod-Enter', run: () => { document.getElementById('run-query').click(); return true; } }, ...completionKeymap, ...defaultKeymap, ...historyKeymap, indentWithTab]),
     EditorView.lineWrapping,
     EditorView.updateListener.of(update => { if (update.docChanged) { textarea.value = update.state.doc.toString(); textarea.dispatchEvent(new Event('input')); } }),
@@ -33,9 +36,10 @@ const editor = new EditorView({
 });
 document.addEventListener('studio-theme-change', () => editor.dispatch({ effects: appearance.reconfigure(editorTheme()) }));
 window.sqlEditor = {
+  setRelations: model => { relationalModel = model; },
   getValue: () => editor.state.doc.toString(),
   getSelection: () => editor.state.sliceDoc(editor.state.selection.main.from, editor.state.selection.main.to),
   setValue: text => editor.dispatch({ changes: { from: 0, to: editor.state.doc.length, insert: text } }),
   focus: () => editor.focus(),
-  setSchema: schema => editor.dispatch({ effects: language.reconfigure(sql({ dialect: MSSQL, schema, upperCaseKeywords: true })) }),
+  setSchema: schema => editor.dispatch({ effects: language.reconfigure(sql({ dialect: MSSQL, schema, defaultSchema: 'dbo', upperCaseKeywords: true })) }),
 };

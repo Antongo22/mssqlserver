@@ -28,7 +28,7 @@ async function loadSection(id) {
 }
 document.addEventListener('database-changed',safe(async()=>{
   extra.viewId++;extra.structure=null;
-  const schema={};for(const t of state.tables)schema[t.schema+'.'+t.name]=[];window.sqlEditor?.setSchema(schema);
+  document.dispatchEvent(new CustomEvent('completion-refresh'));
   for(const id of Object.keys(sections))if(!$(id+'-panel').hidden)await loadSection(id);
 }));
 
@@ -47,7 +47,7 @@ async function loadRows() {
   const data=await api(`${dbPath()}/data?${params}`);
   if(generation!==state.generation||view!==extra.viewId)return;
   state.columns=data.columns;state.data=data;extra.sort=data.sort;
-  window.sqlEditor?.setSchema({[`${table.schema}.${table.name}`]:data.columns.map(c=>c.name)});
+
   showTableData();
 }
 showTableData = () => {
@@ -56,7 +56,7 @@ showTableData = () => {
   $('data-note').textContent=data.editable?'Редактирование по первичному ключу':'Нет подходящего PK: изменение и удаление через SQL';
   $('table-content').classList.remove('data-scroll');
   const options=data.columns.map(c=>`<option ${c.name===extra.filterColumn?'selected':''}>${esc(c.name)}</option>`).join('');
-  $('table-content').innerHTML=`<div class="data-tools"><select id="filter-column" aria-label="Столбец фильтра"><option value="">Столбец…</option>${options}</select><input id="filter-value" placeholder="Содержит…" aria-label="Текст фильтра" value="${esc(extra.filter)}">${button('filter','Найти')}${button('clear-filter','Сбросить')}${button('refresh-data','↻')}${button('export-data','↓ CSV')}${button('import-data','↑ CSV')}</div>
+  $('table-content').innerHTML=`<div class="data-tools"><select id="filter-column" aria-label="Столбец фильтра"><option value="">Столбец…</option>${options}</select><input id="filter-value" placeholder="Содержит…" aria-label="Текст фильтра" value="${esc(extra.filter)}">${button('filter','Найти')}${button('clear-filter','Сбросить')}${button('refresh-data','↻')}${button('export-data','↓ CSV')}${button('import-data','↑ CSV / Excel')}</div>
     <div class="data-scroll"><table><thead><tr><th>Действия</th>${data.columns.map((c,i)=>`<th><button class="sort-button" data-action="sort" data-index="${i}">${esc(c.name)} ${c.name===extra.sort?(extra.direction==='ASC'?'↑':'↓'):''}</button></th>`).join('')}</tr></thead><tbody>${data.rows.map((r,i)=>`<tr><td class="row-actions">${button('edit-row','Изменить',`data-index="${i}" ${!data.editable?'disabled':''}`)}${button('delete-row','×',`data-index="${i}" ${!data.editable?'disabled':''} aria-label="Удалить запись"`)}</td>${r.values.map(v=>v===null?'<td class="null">NULL</td>':`<td title="${esc(v)}">${esc(v)}</td>`).join('')}</tr>`).join('')||`<tr><td colspan="${data.columns.length+1}">Записи не найдены</td></tr>`}</tbody></table></div>
     <div class="pager"><span>Страница ${extra.page+1} · ${data.rows.length} записей</span><select id="page-size" aria-label="Записей на странице">${[25,50,100].map(n=>`<option ${n===extra.pageSize?'selected':''}>${n}</option>`).join('')}</select>${button('prev-page','←',extra.page===0?'disabled':'')}${button('next-page','→',!data.hasMore?'disabled':'')}</div>`;
   $('page-size').onchange=safe(async e=>{extra.pageSize=Number(e.target.value);extra.page=0;await loadRows();});
@@ -111,7 +111,7 @@ showStructure = async () => {
 $('show-structure').onclick=safe(showStructure);$('show-data').onclick=showTableData;
 async function structureAction(action,dataset={}) {
   const t=state.table,s=extra.structure,index=Number(dataset.index),database=state.database;
-  const apply=async values=>{await api(`/api/databases/${encodeURIComponent(database)}/structure`,{method:'POST',body:{schema:t.schema,name:t.name,action,...values}});if(action==='dropTable'||action==='rename'){await selectDatabase(database);}else{await loadRows();await showStructure();}notice('Структура обновлена.');};
+  const apply=async values=>{const result=await api(`/api/databases/${encodeURIComponent(database)}/structure`,{method:'POST',body:{schema:t.schema,name:t.name,action,...values}});if(result?.preview)return;if(action==='dropTable'||action==='rename'){await selectDatabase(database);}else{await loadRows();await showStructure();}notice('Структура обновлена.');};
   if(action==='script')return stageSQL(tableDDL(t,s));
   if(['dropTable','truncate'].includes(action))return confirmAction(action==='dropTable'?'Удалить таблицу':'Очистить таблицу',t.name,confirm=>apply({confirm}),'Данные будут удалены. Связанные объекты могут запретить операцию.');
   if(action==='rename')return modal('Переименовать таблицу',field('newName','Новое имя',t.name),async form=>apply(formValues(form)),'Переименовать');
@@ -191,18 +191,18 @@ async function backupAction(action,control){
   if(action==='backup-create')return modal('Создать резервную копию',`<p class="modal-copy">База: <strong>${esc(state.database)}</strong>. Файл будет сохранён отдельно от данных SQL Server.</p>`,async()=>{await api('/api/backups',{method:'POST',body:{database:state.database}});await loadSection('backups');notice('Резервная копия создана.');},'Создать копию');
   if(action==='backup-verify'){control.disabled=true;try{await api(`/api/backups/${encodeURIComponent(file.name)}/verify`,{method:'POST'});notice('RESTORE VERIFYONLY: резервная копия прошла проверку.');}finally{control.disabled=false;}return;}
   if(action==='backup-download'){
-    const response=await fetch(`/api/backups/${encodeURIComponent(file.name)}/download`,{headers:{'X-Admin-Request':'1'}});if(!response.ok)throw new Error('Не удалось скачать файл.');const url=URL.createObjectURL(await response.blob());const a=document.createElement('a');a.href=url;a.download=file.name;a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);return;
+    const response=await fetch(`/api/backups/${encodeURIComponent(file.name)}/download`,{headers:{'X-Admin-Request':'1','X-Studio-Connection':state.connection}});if(!response.ok)throw new Error('Не удалось скачать файл.');const url=URL.createObjectURL(await response.blob());const a=document.createElement('a');a.href=url;a.download=file.name;a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);return;
   }
   if(action==='backup-upload')return modal('Загрузить резервную копию','<label class="field">Файл .bak (до 512 МБ)<input type="file" id="backup-file" accept=".bak" required></label>',async()=>{
     const f=$('backup-file').files[0];if(!f||f.size>512*1024*1024)throw new Error('Выберите .bak размером до 512 МБ.');
-    const response=await fetch('/api/backups/upload',{method:'POST',headers:{'Content-Type':'application/octet-stream','X-Admin-Request':'1'},body:f});const data=await response.json();if(!response.ok)throw new Error(data.error);await loadSection('backups');notice('Файл загружен. Перед восстановлением проверьте копию.');
+    const response=await fetch('/api/backups/upload',{method:'POST',headers:{'Content-Type':'application/octet-stream','X-Admin-Request':'1','X-Studio-Connection':state.connection},body:f});const data=await response.json();if(!response.ok)throw new Error(data.error);await loadSection('backups');notice('Файл загружен. Перед восстановлением проверьте копию.');
   },'Загрузить');
   if(action==='backup-delete')return confirmAction('Удалить резервную копию',file.name,async confirm=>{await api(`/api/backups/${encodeURIComponent(file.name)}`,{method:'DELETE',body:{confirm}});await loadSection('backups');},'Файл резервной копии будет удалён из хранилища Docker.');
   if(action==='backup-local-restore')return modal('Восстановить с компьютера','<label class="field">Файл .bak (до 512 МБ)<input type="file" id="restore-local-file" accept=".bak" required></label>'+field('database','Имя новой базы')+field('confirm','Повторите имя базы')+'<p class="modal-copy">Файл будет загружен, проверен и восстановлен. Существующая база не перезаписывается.</p>',async form=>{
     const body=formValues(form),f=$('restore-local-file').files[0];
     if(!f||f.size>512*1024*1024)throw new Error('Выберите .bak до 512 МБ.');
     if(!body.database||body.database!==body.confirm)throw new Error('Имена базы должны совпадать.');
-    const response=await fetch('/api/backups/upload',{method:'POST',headers:{'Content-Type':'application/octet-stream','X-Admin-Request':'1'},body:f});
+    const response=await fetch('/api/backups/upload',{method:'POST',headers:{'Content-Type':'application/octet-stream','X-Admin-Request':'1','X-Studio-Connection':state.connection},body:f});
     const uploaded=await response.json();if(!response.ok)throw new Error(uploaded.error);
     await api(`/api/backups/${encodeURIComponent(uploaded.name)}/verify`,{method:'POST'});
     await api(`/api/backups/${encodeURIComponent(uploaded.name)}/restore`,{method:'POST',body});

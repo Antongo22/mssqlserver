@@ -1,10 +1,10 @@
 const $ = id => document.getElementById(id);
-const state = { databases: [], database: null, tables: [], table: null, columns: [], data: null, results: null, resultIndex: 0, busy: false, generation: 0 };
+const state = { connection: 'local', queryParameters: undefined, databases: [], database: null, tables: [], table: null, columns: [], data: null, results: null, resultIndex: 0, busy: false, generation: 0 };
 const esc = value => String(value ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const quote = value => `[${value.replaceAll(']', ']]')}]`;
 const dbPath = () => `/api/databases/${encodeURIComponent(state.database)}`;
 async function api(path, options = {}) {
-  const response = await fetch(path, { ...options, headers: { 'Content-Type': 'application/json', 'X-Admin-Request': '1' }, body: options.body ? JSON.stringify(options.body) : undefined });
+  const response = await fetch(path, { ...options, headers: { 'Content-Type': 'application/json', 'X-Admin-Request': '1', 'X-Studio-Connection': state.connection, ...options.headers }, body: options.body ? JSON.stringify(options.body) : undefined });
   const data = await response.json();
   if (!response.ok) throw Object.assign(new Error(data.error || 'Ошибка запроса'), {details: data});
   return data;
@@ -21,7 +21,9 @@ function renderDatabases() {
   }).join('') || '<p class="muted">Базы не найдены</p>';
 }
 async function loadDatabases(preferred) {
+  const connection = state.connection;
   const data = await api('/api/databases');
+  if(connection !== state.connection)return;
   state.databases = data.databases;
   $('connection-status').textContent = 'Соединение установлено';
   $('server-version').textContent = `Версия ${data.server.version}`;
@@ -125,7 +127,7 @@ async function runQuery() {
   const id = crypto.randomUUID(); state.queryId = id;
   if($('cancel-query')) $('cancel-query').disabled = false;
   try {
-    const result = await api('/api/query', { method: 'POST', body: { database, sql: text, id, timeout: Number($('query-timeout')?.value || 60), transaction: $('query-transaction')?.checked, statistics: $('query-statistics')?.checked, mode: state.planMode } });
+    const result = await api('/api/query', { method: 'POST', body: { database, sql: text, id, timeout: Number($('query-timeout')?.value || 60), transaction: $('query-transaction')?.checked, statistics: $('query-statistics')?.checked, mode: state.planMode, parameters: state.queryParameters } });
     document.dispatchEvent(new CustomEvent('query-completed', { detail: { database, sql: text, result } }));
     if (generation !== state.generation) return;
     state.results = result; state.resultIndex = 0;
@@ -156,6 +158,7 @@ function renderResult() {
 }
 let submitModal;
 function modal(title, content, submit, label = 'Создать', danger = false, wide = false) {
+  $('modal-submit').disabled = false;
   $('modal-title').textContent = title; $('modal-body').innerHTML = content; $('modal-error').hidden = true;
   $('modal-submit').textContent = label; $('modal-submit').className = `button primary${danger ? ' danger' : ''}`;
   $('modal').classList.toggle('wide', wide); submitModal = submit; $('modal').showModal();
@@ -202,7 +205,7 @@ $('modal-form').onsubmit = async event => {
   event.preventDefault(); $('modal-submit').disabled = true; $('modal-error').hidden = true;
   $('close-modal').disabled = true; $('cancel-modal').disabled = true;
   try { await submitModal(event.target); $('modal').close(); }
-  catch (error) { $('modal-error').textContent = error.message; $('modal-error').hidden = false; }
+  catch (error) { $('modal-error').textContent = error.message; $('modal-error').hidden = !!error.preview; }
   finally { $('modal-submit').disabled = false; $('close-modal').disabled = false; $('cancel-modal').disabled = false; }
 };
 $('modal').addEventListener('cancel', event => { if($('modal-submit').disabled) event.preventDefault(); });

@@ -56,6 +56,31 @@ export function installTables(app, { withDb, sql, identifier: q, fail }) {
   app.post(root, async (req,res) => mutate(req,res,'insert'));
   app.patch(root, async (req,res) => mutate(req,res,'update'));
   app.delete(root, async (req,res) => mutate(req,res,'delete'));
+  app.post(root + '/import/preview',async(req,res)=>{
+    const {schema='dbo',name,records}=req.body;
+    if(!Array.isArray(records)||records.length<1||records.length>500)throw fail('Импорт: 1–500 строк.');
+    const errors=[];
+    await withDb(req.params.database,async p=>{
+      const columns=await metadata(p,schema,name);
+      for(const [row,values] of records.entries()) {
+        if(!values||typeof values!=='object'||Array.isArray(values))throw fail('Некорректная строка.');
+        const request=p.request(),checks=[];
+        for(const c of columns)if(c.writable&&!c.nullable&&!c.default&&!Object.hasOwn(values,c.name))errors.push({row:row+1,column:c.name,error:'Обязательный столбец не сопоставлен'});
+        for(const [name,value] of Object.entries(values)){
+          const c=columns.find(c=>c.name===name);
+          if(!c?.writable){errors.push({row:row+1,column:name,error:'Столбец недоступен для импорта'});continue;}
+          if(value===null&&!c.nullable){errors.push({row:row+1,column:name,error:'NULL запрещён'});continue;}
+          const n='v'+checks.length;parameter(request,c,value,n);
+          let condition=`@${n} IS NOT NULL AND TRY_CONVERT(${c.sqlType},@${n}) IS NULL`;
+          if(['nvarchar','nchar'].includes(c.type)&&c.maxLength!==-1)condition+=` OR DATALENGTH(@${n})>${c.maxLength}`;
+          if(['varchar','char'].includes(c.type)&&c.maxLength!==-1)condition+=` OR DATALENGTH(CONVERT(varchar(max),@${n}))>${c.maxLength}`;
+          checks.push({name,sql:`SELECT ${checks.length} id WHERE ${condition}`});
+        }
+        if(checks.length){const r=await request.query(checks.map(c=>c.sql).join(' UNION ALL '));for(const bad of r.recordset)errors.push({row:row+1,column:checks[bad.id].name,error:'Несовместимый тип или превышена длина'});}
+        if(errors.length>=100)break;
+      }
+    });res.json({valid:errors.length===0,errors:errors.slice(0,100),rows:records.length});
+  });
   app.post(root + '/import', async (req,res) => {
     const {schema='dbo',name,records}=req.body;
     if(!Array.isArray(records)||records.length<1||records.length>500)throw fail('Импорт: от 1 до 500 записей.');
@@ -136,7 +161,7 @@ export function installTables(app, { withDb, sql, identifier: q, fail }) {
   app.post('/api/databases/:database/structure',async(req,res)=>{
     const b=req.body, full=`${q(b.schema||'dbo')}.${q(b.name)}`;
     const destructive=['dropTable','truncate','dropColumn','dropIndex','dropConstraint','alterColumn'];
-    if(destructive.includes(b.action)&&b.confirm!==b.name)throw fail('Подтвердите имя таблицы.');
+    if(!b.preview&&destructive.includes(b.action)&&b.confirm!==b.name)throw fail('Подтвердите имя таблицы.');
     let statement;
     switch(b.action){
       case 'addColumn':case 'alterColumn': statement=`ALTER TABLE ${full} ${b.action==='addColumn'?'ADD':'ALTER COLUMN'} ${q(b.column)} ${checkedType(b.type)} ${b.nullable?'NULL':'NOT NULL'}`;break;
@@ -158,9 +183,17 @@ export function installTables(app, { withDb, sql, identifier: q, fail }) {
       }
       case 'rename': {
         q(b.newName);
-        await withDb(req.params.database,p=>p.request().input('object',sql.NVarChar(520),full).input('new',sql.NVarChar(128),b.newName).query("EXEC sys.sp_rename @object,@new,'OBJECT'"));res.json({ok:true});return;
+        statement=`EXEC sys.sp_rename N'${full.replaceAll("'","''")}',N'${b.newName.replaceAll("'","''")}','OBJECT';`;break;
       }
       default:throw fail('Неизвестное действие.');
+    }
+    if(b.preview) {
+      const dependencies=await withDb(req.params.database,p=>p.request().input('object',sql.NVarChar(520),full).query(`
+        SELECT DISTINCT OBJECT_SCHEMA_NAME(d.referencing_id) [schema],OBJECT_NAME(d.referencing_id) name,'SQL dependency' kind FROM sys.sql_expression_dependencies d WHERE d.referenced_id=OBJECT_ID(@object)
+        UNION SELECT OBJECT_SCHEMA_NAME(f.parent_object_id),f.name,'Incoming FK' FROM sys.foreign_keys f WHERE f.referenced_object_id=OBJECT_ID(@object)
+        UNION SELECT OBJECT_SCHEMA_NAME(i.object_id),i.name,'Index/key' FROM sys.indexes i WHERE i.object_id=OBJECT_ID(@object) AND i.index_id>0
+        UNION SELECT OBJECT_SCHEMA_NAME(o.parent_object_id),o.name,o.type_desc FROM sys.objects o WHERE o.parent_object_id=OBJECT_ID(@object) AND o.type IN ('F','C','D','TR');`));
+      res.json({sql:statement,dependencies:dependencies.recordset,destructive:destructive.includes(b.action)});return;
     }
     await withDb(req.params.database,p=>p.request().batch(statement));res.json({ok:true});
   });
