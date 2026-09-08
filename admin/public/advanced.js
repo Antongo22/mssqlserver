@@ -235,7 +235,7 @@ for(const id of Object.keys(sections))$(id+'-panel').onclick=safe(async event=>{
     if(action==='definition'){
       const data=await api(`${dbPath()}/definition/${o.id}`);
       if(!data.definition)throw new Error('Для этого объекта нет SQL-текста (возможно, он зашифрован).');
-      stageSQL(data.definition.replace(/^\s*(CREATE|ALTER)(?!\s+OR\s+ALTER)\s+/i,'CREATE OR ALTER '),o.name);return;
+      stageSQL(data.definition.replace(/^\s*(CREATE|ALTER)(?!\s+OR\s+ALTER)\s+/i,'CREATE OR ALTER '),o.name);document.dispatchEvent(new CustomEvent('object-opened',{detail:o}));return;
     }
     if(action==='drop-object')return confirmAction('Удалить объект',o.name,async confirm=>{await api(`${dbPath()}/objects/${o.id}`,{method:'DELETE',body:{confirm}});await loadSection('objects');});
   }

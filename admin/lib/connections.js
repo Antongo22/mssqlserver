@@ -3,9 +3,11 @@ import { randomUUID } from 'node:crypto';
 export function createConnections({ store, config, sql, fail }) {
   const context = new AsyncLocalStorage();
   const local = { id: 'local', name: 'Docker · локальный', server: config.server, port: config.port, user: config.user, environment: 'development', encrypt: true, trustServerCertificate: true };
-  const list = () => [local, ...store.read().connections].map(({ password, ...c }) => c);
-  function get(id = context.getStore() || 'local') {
-    if (id === 'local') return local;
+  const list = () => [get('local'), ...store.read().connections].map(({ password, ...c }) => c);
+  function get(id) {
+    if(id===undefined&&context.getStore())return context.getStore();
+    id??='local';
+    if (id === 'local') return {...local,...store.read().localProfile};
     const c = store.read().connections.find(c => c.id === id);
     if (!c) throw fail('Подключение не найдено. Выберите доступный сервер.', 404); return c;
   }
@@ -13,7 +15,7 @@ export function createConnections({ store, config, sql, fail }) {
     const c = get(id);
     return c.id === 'local' ? config : { ...config, server: c.server, port: c.port, user: c.user, password: c.password, options: { ...config.options, encrypt: c.encrypt, trustServerCertificate: c.trustServerCertificate } };
   }
-  const run = (id, fn) => context.run(id, fn);
+  const run = (id, fn) => context.run(structuredClone(get(id)), fn);
   const validate = b => {
     for (const k of ['name','server','user']) if (typeof b[k] !== 'string' || !b[k].trim() || b[k].length > 128 || /[\x00-\x1f]/.test(b[k])) throw fail(`Некорректное поле: ${k}.`);
     if (!Number.isInteger(Number(b.port)) || Number(b.port) < 1 || Number(b.port) > 65535) throw fail('Порт: 1–65535.');
@@ -32,6 +34,17 @@ export function createConnections({ store, config, sql, fail }) {
     app.post('/api/connections', async (req,res) => {
       const c = { ...validate(req.body), id: randomUUID() };
       await store.update(s => { s.connections.push(c); }); const { password, ...safe } = c; res.status(201).json(safe);
+    });
+    app.patch('/api/connections/:id',async(req,res)=>{
+      const old=get(req.params.id),b=req.body;
+      if(old.id==='local'){
+        if(typeof b.name!=='string'||!b.name.trim()||b.name.length>128||!['development','test','production'].includes(b.environment))throw fail('Укажите название и окружение.');
+        await store.update(s=>{s.localProfile={...s.localProfile,name:b.name.trim(),environment:b.environment};});
+      }else{
+        const updated={...validate({...old,...b,password:b.password||old.password}),id:old.id};
+        await store.update(s=>{const index=s.connections.findIndex(c=>c.id===old.id);if(index<0)throw fail('Подключение удалено.',404);s.connections[index]=updated;});
+      }
+      const {password,...safe}=get(req.params.id);res.json(safe);
     });
     app.delete('/api/connections/:id', async (req,res) => {
       const c = get(req.params.id);

@@ -4,6 +4,7 @@ import { fileURLToPath } from 'node:url';
 import { randomUUID } from 'node:crypto';
 import { executeScript, running } from './lib/query.js';
 import { installCatalog } from './lib/catalog.js';
+import { installObjectSearch } from './lib/object-search.js';
 import { installTables } from './lib/tables.js';
 import { installOperations } from './lib/operations.js';
 import { installCreateTable } from './lib/create-table.js';
@@ -121,6 +122,7 @@ installDiagram(app, services);
 installSchemaTools(app, services);
 installImportFile(app);
 installTables(app, services);
+installObjectSearch(app, services);
 installOperations(app, services);
 app.post('/api/query', async (req, res) => {
   if (typeof req.body.sql !== 'string' || !req.body.sql.trim()) throw fail('Введите SQL-запрос.');

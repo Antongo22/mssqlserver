@@ -16,3 +16,13 @@ test('cell batches roll back all rows on stale versions; exact relation filters 
     assert.equal((await call(root+'/data?name=Items&exact='+encodeURIComponent(JSON.stringify({'Bad];--':'1'})))).status,400);
   }finally{await ok(root,'DELETE',{confirm:db});}
 });
+test('search finds objects, columns and SQL definitions without scanning row data',async()=>{
+  const db='Studio_search_'+Date.now(),root='/api/databases/'+db;await ok('/api/databases','POST',{name:db});
+  try{
+    await ok('/api/query','POST',{database:db,sql:"CREATE TABLE dbo.SearchTarget(Id int,NeedleColumn nvarchar(50));INSERT dbo.SearchTarget VALUES(1,N'OnlyInData');\nGO\nCREATE VIEW dbo.SearchView AS SELECT Id FROM dbo.SearchTarget WHERE Id>987654;"});
+    for(const [term,hit] of [['SearchTarget','OBJECT'],['NeedleColumn','COLUMN'],['987654','DEFINITION']])assert.ok((await ok(root+'/search?q='+term)).results.some(r=>r.hit===hit));
+    assert.equal((await ok(root+'/search?q=OnlyInData')).results.length,0);
+    assert.equal((await call(root+'/search?q=a')).status,400);
+    assert.equal((await ok(root+'/search?q='+encodeURIComponent("';DROP TABLE dbo.SearchTarget;--"))).results.length,0);
+  }finally{await ok(root,'DELETE',{confirm:db});}
+});
