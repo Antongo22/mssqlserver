@@ -36,7 +36,7 @@ document.addEventListener('database-changed',safe(async()=>{
 openTable = async table => {
   extra.exact={};extra.page=0;extra.filter='';extra.filterColumn='';extra.sort='';extra.direction='ASC';extra.structure=null;
   state.table=table;renderTables();$('table-detail').hidden=false;$('table-title').textContent=`${table.schema}.${table.name}`;
-  $('insert-template').textContent='＋ Запись';$('insert-template').onclick=()=>editRow();
+  $('insert-template').textContent='＋ Запись';$('insert-template').onclick=safe(()=>editRow());
   await loadRows();
 };
 async function loadRows() {
@@ -53,7 +53,8 @@ async function loadRows() {
 showTableData = () => {
   $('show-data').classList.add('active');$('show-structure').classList.remove('active');
   const data=state.data;if(!data?.columns)return;
-  $('data-note').textContent=data.editable?'Редактирование по первичному ключу':'Нет подходящего PK: изменение и удаление через SQL';
+  $('insert-template').disabled=!!data.readOnly;
+  $('data-note').textContent=data.readOnly?'Подключение в режиме чтения':data.editable?'Редактирование по первичному ключу':'Нет подходящего PK: изменение и удаление через SQL';
   $('table-content').classList.remove('data-scroll');
   const options=data.columns.map(c=>`<option ${c.name===extra.filterColumn?'selected':''}>${esc(c.name)}</option>`).join('');
   $('table-content').innerHTML=`<div class="data-tools"><select id="filter-column" aria-label="Столбец фильтра"><option value="">Столбец…</option>${options}</select><input id="filter-value" placeholder="Содержит…" aria-label="Текст фильтра" value="${esc(extra.filter)}">${button('filter','Найти')}${button('clear-filter','Сбросить')}${button('refresh-data','↻')}${button('export-data','↓ CSV')}${button('import-data','↑ CSV / Excel')}</div>
@@ -212,7 +213,7 @@ async function backupAction(action,control){
 }
 async function loadMonitor(generation){
   const data=await api('/api/monitor');if(generation!==state.generation)return;extra.sessions=data.sessions;
-  $('monitor-panel').innerHTML=`<div class="section-toolbar"><div><h2>Активность сервера</h2><p class="muted">Снимок на ${new Date().toLocaleTimeString('ru-RU')} · память процесса ${data.memory.memoryMB} МБ</p></div>${button('reload','↻ Обновить')}</div><div class="service-cards">${data.services.map(s=>`<div class="panel"><strong>${esc(s.servicename)}</strong><span>${esc(s.status)}</span></div>`).join('')}</div><div class="panel data-scroll"><table><thead><tr><th>Сессия</th><th>Логин / программа</th><th>База</th><th>Статус</th><th>CPU / время</th><th>Блокировка / ожидание</th><th>Транзакции</th><th></th></tr></thead><tbody>${data.sessions.map((s,i)=>`<tr><td>${s.id}</td><td>${esc(s.login)}<br>${esc(s.program)}</td><td>${esc(s.database||'—')}</td><td>${esc(s.status)}</td><td>${s.cpuMs||0} / ${s.elapsedMs||0} мс</td><td>${s.blockedBy||'—'} / ${esc(s.wait||'—')}</td><td>${s.openTransactions}</td><td>${button('session-sql','SQL',`data-index="${i}"`)}${button('session-kill','Завершить',`data-index="${i}"`)}</td></tr>`).join('')||'<tr><td colspan="8">Нет пользовательских сессий</td></tr>'}</tbody></table></div>`;
+  $('monitor-panel').innerHTML=`<div class="section-toolbar"><div><h2>Активность сервера</h2><p class="muted">Снимок на ${new Date().toLocaleTimeString('ru-RU')} · память процесса ${data.memory.memoryMB} МБ</p></div>${button('reload','↻ Обновить')}</div>${window.blockingTreeHTML?.(data.blocking)||''}<div class="service-cards">${data.services.map(s=>`<div class="panel"><strong>${esc(s.servicename)}</strong><span>${esc(s.status)}</span></div>`).join('')}</div><div class="panel data-scroll"><table><thead><tr><th>Сессия</th><th>Логин / программа</th><th>База</th><th>Статус</th><th>CPU / время</th><th>Блокировка / ожидание</th><th>Транзакции</th><th></th></tr></thead><tbody>${data.sessions.map((s,i)=>`<tr><td>${s.id}</td><td>${esc(s.login)}<br>${esc(s.program)}</td><td>${esc(s.database||'—')}</td><td>${esc(s.status)}</td><td>${s.cpuMs||0} / ${s.elapsedMs||0} мс</td><td>${s.blockedBy||'—'} / ${esc(s.wait||'—')}</td><td>${s.openTransactions}</td><td>${button('session-sql','SQL',`data-index="${i}"`)}${button('session-kill','Завершить',`data-index="${i}"`)}</td></tr>`).join('')||'<tr><td colspan="8">Нет пользовательских сессий</td></tr>'}</tbody></table></div>`;
 }
 async function loadJobs(generation){
   const data=await api('/api/jobs');if(generation!==state.generation)return;extra.jobs=data.jobs;

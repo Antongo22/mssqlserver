@@ -1,3 +1,4 @@
+import {blockingTree} from './blocking-tree.js';
 import { readdir, stat, unlink, chmod, mkdir } from 'node:fs/promises';
 import { createWriteStream } from 'node:fs';
 import { pipeline } from 'node:stream/promises';
@@ -41,13 +42,14 @@ export function installOperations(app, { withDb, sql, identifier: q, fail, backu
     const r=await withDb('master',p=>p.request().query(`
       SELECT s.session_id id,s.login_name login,s.host_name host,s.program_name program,s.status,
         DB_NAME(r.database_id) [database],r.command,r.blocking_session_id blockedBy,r.wait_type wait,
-        r.cpu_time cpuMs,r.total_elapsed_time elapsedMs,r.reads,r.writes,r.logical_reads logicalReads,
+        r.wait_time waitMs,r.cpu_time cpuMs,r.total_elapsed_time elapsedMs,r.reads,r.writes,r.logical_reads logicalReads,
         LEFT(t.text,8000) sqlText,s.open_transaction_count openTransactions
       FROM sys.dm_exec_sessions s LEFT JOIN sys.dm_exec_requests r ON r.session_id=s.session_id
-      OUTER APPLY sys.dm_exec_sql_text(r.sql_handle)t WHERE s.is_user_process=1 AND s.session_id<>@@SPID ORDER BY r.total_elapsed_time DESC,s.session_id;
+      LEFT JOIN sys.dm_exec_connections cn ON cn.session_id=s.session_id
+      OUTER APPLY sys.dm_exec_sql_text(COALESCE(r.sql_handle,cn.most_recent_sql_handle))t WHERE s.is_user_process=1 AND s.session_id<>@@SPID ORDER BY r.total_elapsed_time DESC,s.session_id;
       SELECT physical_memory_in_use_kb/1024 memoryMB,virtual_address_space_committed_kb/1024 committedMB FROM sys.dm_os_process_memory;
       SELECT servicename,status_desc status,last_startup_time startedAt FROM sys.dm_server_services;`));
-    res.json({sessions:r.recordsets[0],memory:r.recordsets[1][0],services:r.recordsets[2]});
+    res.json({sessions:r.recordsets[0],blocking:blockingTree(r.recordsets[0]),memory:r.recordsets[1][0],services:r.recordsets[2]});
   });
   app.post('/api/monitor/kill',async(req,res)=>{
     const id=Number(req.body.id);

@@ -22,7 +22,7 @@ export function createConnections({ store, config, sql, fail }) {
     if (typeof b.password !== 'string' || !b.password || b.password.length > 256) throw fail('Укажите пароль.');
     if (!['development','test','production'].includes(b.environment)) throw fail('Выберите окружение.');
     if (b.backupPath && (typeof b.backupPath !== 'string' || b.backupPath.length > 260 || /[\x00-\x1f]/.test(b.backupPath))) throw fail('Некорректный путь бекапов.');
-    return { name: b.name.trim(), server: b.server.trim(), port: Number(b.port), user: b.user.trim(), password: b.password, environment: b.environment, encrypt: b.encrypt !== false, trustServerCertificate: b.trustServerCertificate === true, backupPath: b.backupPath || '' };
+    return { name: b.name.trim(), server: b.server.trim(), port: Number(b.port), user: b.user.trim(), password: b.password, environment: b.environment, encrypt: b.encrypt !== false, trustServerCertificate: b.trustServerCertificate === true, backupPath: b.backupPath || '', readOnly: b.readOnly === true };
   };
   function install(app) {
     app.get('/api/connections', (req,res) => res.json(list()));
@@ -36,13 +36,13 @@ export function createConnections({ store, config, sql, fail }) {
       await store.update(s => { s.connections.push(c); }); const { password, ...safe } = c; res.status(201).json(safe);
     });
     app.patch('/api/connections/:id',async(req,res)=>{
-      const old=get(req.params.id),b=req.body;
+      const old=get(req.params.id),b={...old,...req.body};
       if(old.id==='local'){
         if(typeof b.name!=='string'||!b.name.trim()||b.name.length>128||!['development','test','production'].includes(b.environment))throw fail('Укажите название и окружение.');
-        await store.update(s=>{s.localProfile={...s.localProfile,name:b.name.trim(),environment:b.environment};});
+        await store.update(s=>{s.localProfile={...s.localProfile,name:b.name.trim(),environment:b.environment,readOnly:b.readOnly===true};if(b.readOnly===true)for(const schedule of s.schedules)if(schedule.connection===old.id)schedule.enabled=false;});
       }else{
         const updated={...validate({...old,...b,password:b.password||old.password}),id:old.id};
-        await store.update(s=>{const index=s.connections.findIndex(c=>c.id===old.id);if(index<0)throw fail('Подключение удалено.',404);s.connections[index]=updated;});
+        await store.update(s=>{const index=s.connections.findIndex(c=>c.id===old.id);if(index<0)throw fail('Подключение удалено.',404);s.connections[index]=updated;if(updated.readOnly)for(const schedule of s.schedules)if(schedule.connection===old.id)schedule.enabled=false;});
       }
       const {password,...safe}=get(req.params.id);res.json(safe);
     });

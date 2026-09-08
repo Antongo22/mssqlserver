@@ -78,3 +78,7 @@ async function rowRelations(index){
 // Existing row actions must not mutate the server while a cell batch is pending.
 $('table-content').addEventListener('click',e=>{if(window.studioHasDrafts()&&e.target.closest('[data-action],#page-size')){e.stopImmediatePropagation();e.preventDefault();notice('Сначала сохраните или отмените изменения ячеек.',true);}},true);
 $('table-content').addEventListener('change',e=>{if(window.studioHasDrafts()&&e.target.id==='page-size'){e.stopImmediatePropagation();e.preventDefault();e.target.value=extra.pageSize;}},true);
+
+for(const id of ['manage-connections','new-database','new-table','delete-database']){
+  const control=$(id),action=control.onclick;control.onclick=safe(async(...args)=>{requireCleanGrid();if(state.busy)throw new Error('Дождитесь завершения запроса.');return action(...args);});
+}

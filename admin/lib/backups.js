@@ -40,6 +40,7 @@ export function createBackups({ withDb, sql, identifier: q, fail, connections, s
     const started = Date.now(); let name, error;
     try {
       await connections.run(schedule.connection, async () => {
+        if(connections.get().readOnly)throw fail('Расписание приостановлено: подключение в режиме чтения.');
         await mkdir(paths().local, { recursive: true });
         name = await create(schedule.database, 'schedule_' + schedule.id); await verify(name);
         if (schedule.restoreCheck) {

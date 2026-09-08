@@ -3,8 +3,20 @@ const state = { connection: 'local', queryParameters: undefined, databases: [], 
 const esc = value => String(value ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const quote = value => `[${value.replaceAll(']', ']]')}]`;
 const dbPath = () => `/api/databases/${encodeURIComponent(state.database)}`;
+async function studioFetch(path,options={}) {
+  const frozen={...options,headers:{...options.headers}};
+  const response=await fetch(path,frozen);
+  if(response.status===428&&window.confirmProduction){
+    const data=await response.clone().json();
+    if(data.confirmation){
+      await window.confirmProduction(data.confirmation,path,frozen);
+      return fetch(path,{...frozen,headers:{...frozen.headers,'X-Studio-Confirmation':data.confirmation.token}});
+    }
+  }
+  return response;
+}
 async function api(path, options = {}) {
-  const response = await fetch(path, { ...options, headers: { 'Content-Type': 'application/json', 'X-Admin-Request': '1', 'X-Studio-Connection': state.connection, ...options.headers }, body: options.body ? JSON.stringify(options.body) : undefined });
+  const response = await studioFetch(path, { ...options, headers: { 'Content-Type': 'application/json', 'X-Admin-Request': '1', 'X-Studio-Connection': state.connection, ...options.headers }, body: options.body ? JSON.stringify(options.body) : undefined });
   const data = await response.json();
   if (!response.ok) throw Object.assign(new Error(data.error || 'Ошибка запроса'), {details: data});
   return data;

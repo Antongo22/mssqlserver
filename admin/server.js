@@ -1,4 +1,6 @@
 import express from 'express';
+import { createProtection } from './lib/protection.js';
+import { createDDLHistory } from './lib/ddl-history.js';
 import sql from 'mssql';
 import { fileURLToPath } from 'node:url';
 import { randomUUID } from 'node:crypto';
@@ -28,17 +30,18 @@ const config = {
 const fail = (message, status = 400) => Object.assign(new Error(message), { status });
 const store = await createStore(process.env.STUDIO_DIR || '.studio');
 const connections = createConnections({ store, config, sql, fail });
+const ddlHistory = createDDLHistory({store,connections});
 function identifier(value) {
   if (typeof value !== 'string' || !value.trim() || value.length > 128 || /[\x00-\x1f]/.test(value)) {
     throw fail('Имя должно содержать от 1 до 128 символов без управляющих символов.');
   }
   return `[${value.replaceAll(']', ']]')}]`;
 }
-async function withDb(database, fn) {
+async function withDb(database, fn, options = {}) {
   identifier(database);
   const pool = new sql.ConnectionPool({ ...connections.config(), database });
   pool.on('error', () => {});
-  try { await pool.connect(); return await fn(pool); }
+  try { await pool.connect(); if(options.audit!==false)ddlHistory.observe(pool,database); return await fn(pool); }
   finally { await pool.close(); }
 }
 app.disable('x-powered-by');
@@ -57,6 +60,8 @@ app.use((req, res, next) => {
 app.use(express.json({ limit: '2mb' }));
 app.use('/api', connections.middleware);
 connections.install(app);
+app.use('/api', createProtection({connections}));
+ddlHistory.install(app);
 app.get('/health', async (req, res) => {
   try { await withDb('master', p => p.request().query('SELECT 1 AS ok')); res.json({ ok: true }); }
   catch { res.status(503).json({ ok: false }); }
@@ -130,10 +135,10 @@ app.post('/api/query', async (req, res) => {
   const body = { ...req.body, id: req.body.id || randomUUID() };
   let disconnect;
   try {
-    const result = await withDb(body.database, p => executeScript(p, body, cancel => {
+    const result = await ddlHistory.run(body.database,body.sql,()=>withDb(body.database, p => executeScript(p, body, cancel => {
       disconnect = () => { if (!res.writableEnded) cancel('Клиент отключился.'); };
       res.on('close', disconnect);
-    }));
+    }),{audit:false}),{transaction:body.transaction,estimated:body.mode==='estimated'});
     res.json({ ...result, durationMs: Math.round(performance.now() - start) });
   } finally { if (disconnect) res.off('close', disconnect); }
 });

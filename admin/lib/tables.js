@@ -1,4 +1,4 @@
-export function installTables(app, { withDb, sql, identifier: q, fail }) {
+export function installTables(app, { withDb, sql, identifier: q, fail, connections }) {
   const root = '/api/databases/:database/data';
   const typeName = c => {
     const type = c.type.toLowerCase();
@@ -55,7 +55,7 @@ export function installTables(app, { withDb, sql, identifier: q, fail }) {
         FROM ${q(schema)}.${q(name)} t ${where} ORDER BY ${order} ${direction}${tie} OFFSET @offset ROWS FETCH NEXT @limit ROWS ONLY;`);
       return { columns, rows: r.recordset.slice(0,pageSize).map(row => ({ values: columns.map((c,i) => row['c'+i]), token: row.token })),
         hasMore: r.recordset.length > pageSize, page, pageSize, editable: !!pk.length && pk.every(c => writableTypes.has(c.type)), sort: sortColumn.name };
-    }); res.json(result);
+    }); if(connections.get().readOnly){result.readOnly=true;result.editable=false;result.columns=result.columns.map(c=>({...c,writable:false}));} res.json(result);
   });
   app.post(root, async (req,res) => mutate(req,res,'insert'));
   app.patch(root, async (req,res) => mutate(req,res,'update'));
