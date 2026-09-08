@@ -16,7 +16,7 @@ async function navigateObject(object){
     tab('tables');await openTable(table);if(object.column)await showStructure();
   }else{
     const objects=await api(`${dbPath()}/objects`),o=objects.objects.find(o=>o.schema===object.schema&&o.name===object.name);if(!o)throw new Error('Объект не найден.');
-    const definition=await api(`${dbPath()}/definition/${o.id}`);if(!definition.definition)throw new Error('Определение недоступно.');stageSQL(definition.definition,object.name);rememberObject(object);
+    await showObjectDetails(o);
   }
 }
 quickButton.onclick=()=>{

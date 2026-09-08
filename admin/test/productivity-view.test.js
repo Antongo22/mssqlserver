@@ -4,7 +4,7 @@ import vm from 'node:vm';
 import { readFile } from 'node:fs/promises';
 import { parseHTML } from 'linkedom';
 const html=await readFile(new URL('../public/index.html',import.meta.url),'utf8');
-const scripts=await Promise.all(['app.js','advanced.js','productivity.js','import-preview.js','plan-tree.js','data-workbench.js','navigation.js','governance.js'].map(f=>readFile(new URL('../public/'+f,import.meta.url),'utf8')));
+const scripts=await Promise.all(['app.js','advanced.js','productivity.js','import-preview.js','plan-tree.js','data-workbench.js','navigation.js','governance.js','catalog-view.js'].map(f=>readFile(new URL('../public/'+f,import.meta.url),'utf8')));
 function setup(){
   const {window,document,CustomEvent,Event,DOMParser}=parseHTML(html),data=new Map(),calls=[];
   const $=id=>document.getElementById(id),dialog=$('modal');dialog.showModal=()=>{dialog.open=true;};dialog.close=()=>{dialog.open=false;dialog.dispatchEvent(new Event('close'));};
@@ -67,4 +67,17 @@ test('pins are scoped by database and production confirmation preserves the unde
   const confirmation=document.querySelector('.production-dialog'),input=confirmation.querySelector('input'),submit=confirmation.querySelector('[type=submit]');assert.equal(submit.disabled,true);
   input.value='wrong';input.oninput();assert.equal(submit.disabled,true);input.value='Production';input.oninput();assert.equal(submit.disabled,false);
   confirmation.querySelector('form').onsubmit({preventDefault(){}});await promise;assert.equal($('modal').open,true);assert.match($('modal-body').textContent,/Original content/);
+});
+test('catalog filters index columns and opens read-only properties instead of executing SQL',async()=>{
+  const {$,evaluate,respond,calls}=setup();await new Promise(r=>setTimeout(r,20));
+  respond(url=>{
+    if(url.endsWith('/objects'))return {objects:[{id:8,type:'P',name:'ReadItems',schema:'dbo',kind:'SQL_STORED_PROCEDURE'}],schemas:[{name:'dbo'}]};
+    if(url.endsWith('/indexes'))return {indexes:[{name:'IX_Test',objectId:1,indexId:2,schema:'dbo',table:'Items',kind:'NONCLUSTERED',typeId:2,columns:[{name:'IncludedLabel',included:true,position:2,keyOrdinal:0}]}]};
+    if(url.endsWith('/details'))return {id:8,type:'P',name:'ReadItems',schema:'dbo',createdAt:'2026-01-01',modifiedAt:'2026-01-01',parameters:[{id:1,name:'@Name',sqlType:'nvarchar(80)',output:false,readOnly:false}],columns:[],dependencies:[],dependents:[],definition:"CREATE PROC dbo.ReadItems AS SELECT '<script>unsafe</script>';"};
+    return [];
+  });
+  await evaluate('loadObjects(state.generation)');$('object-search').value='IncludedLabel';evaluate('renderObjects()');assert.match($('object-list').textContent,/IX_Test/);assert.ok(!$('object-list').textContent.includes('ReadItems'));
+  await $('objects-panel').onclick({target:$('object-list').querySelector('[data-action="index-details"]')});assert.match($('modal-body').textContent,/INCLUDE/);assert.match($('modal-body').textContent,/IncludedLabel/);$('modal').close();
+  await evaluate('showObjectDetails(extra.objects[0])');assert.match($('modal-body').textContent,/@Name/);assert.match($('modal-body').textContent,/nvarchar\(80\)/);assert.equal($('modal-body').querySelectorAll('script').length,0);
+  assert.ok(calls.every(c=>!c.options?.method||c.options.method==='GET'),'viewing metadata must never execute SQL');
 });
