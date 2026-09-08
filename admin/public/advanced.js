@@ -34,7 +34,7 @@ document.addEventListener('database-changed',safe(async()=>{
 
 // Paged table browser and conflict-aware row editing.
 openTable = async table => {
-  extra.page=0;extra.filter='';extra.filterColumn='';extra.sort='';extra.direction='ASC';extra.structure=null;
+  extra.exact={};extra.page=0;extra.filter='';extra.filterColumn='';extra.sort='';extra.direction='ASC';extra.structure=null;
   state.table=table;renderTables();$('table-detail').hidden=false;$('table-title').textContent=`${table.schema}.${table.name}`;
   $('insert-template').textContent='＋ Запись';$('insert-template').onclick=()=>editRow();
   await loadRows();
@@ -43,7 +43,7 @@ async function loadRows() {
   const table=state.table;if(!table)return;
   const generation=state.generation,view=++extra.viewId;
   $('table-content').textContent='Загрузка…';
-  const params=new URLSearchParams({schema:table.schema,name:table.name,page:extra.page,pageSize:extra.pageSize,filter:extra.filter,filterColumn:extra.filterColumn,sort:extra.sort,direction:extra.direction});
+  const params=new URLSearchParams({schema:table.schema,name:table.name,page:extra.page,pageSize:extra.pageSize,filter:extra.filter,filterColumn:extra.filterColumn,sort:extra.sort,direction:extra.direction,exact:JSON.stringify(extra.exact||{})});
   const data=await api(`${dbPath()}/data?${params}`);
   if(generation!==state.generation||view!==extra.viewId)return;
   state.columns=data.columns;state.data=data;extra.sort=data.sort;
@@ -88,7 +88,7 @@ $('table-content').onclick=safe(async event=>{
   const action=control.dataset.action,index=Number(control.dataset.index);
   if(action==='edit-row')return editRow(index);if(action==='delete-row')return deleteRow(index);
   if(action==='filter'){extra.filter=$('filter-value').value;extra.filterColumn=$('filter-column').value;extra.page=0;}
-  if(action==='clear-filter'){extra.filter='';extra.filterColumn='';extra.page=0;}
+  if(action==='clear-filter'){extra.exact={};extra.filter='';extra.filterColumn='';extra.page=0;}
   if(action==='sort'){const name=state.columns[index].name;extra.direction=extra.sort===name&&extra.direction==='ASC'?'DESC':'ASC';extra.sort=name;extra.page=0;}
   if(action==='prev-page')extra.page--;if(action==='next-page')extra.page++;
   if(['filter','clear-filter','sort','prev-page','next-page','refresh-data'].includes(action))return loadRows();

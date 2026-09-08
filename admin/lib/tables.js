@@ -43,7 +43,11 @@ export function installTables(app, { withDb, sql, identifier: q, fail }) {
       if (filterColumn && !columns.some(c => c.name === filterColumn)) throw fail('Столбец фильтра не найден.');
       const request = p.request().input('offset', sql.Int, page * pageSize).input('limit', sql.Int, pageSize + 1)
         .input('filter', sql.NVarChar(2000), String(filter));
-      const where = filterColumn && filter ? `WHERE CHARINDEX(@filter,CONVERT(nvarchar(max),t.${q(filterColumn)}))>0` : '';
+      let exact={};try{exact=JSON.parse(req.query.exact||'{}');}catch{throw fail('Некорректный точный фильтр.');}
+      if(!exact||typeof exact!=='object'||Array.isArray(exact)||Object.keys(exact).length>16)throw fail('Точный фильтр: до 16 столбцов.');
+      const conditions=Object.entries(exact).map(([name,value],i)=>{const c=columns.find(c=>c.name===name);if(!c)throw fail('Столбец фильтра не найден.');return value===null?`t.${q(name)} IS NULL`:`t.${q(name)}=${parameter(request,c,value,'eq'+i)}`;});
+      if(filterColumn&&filter)conditions.push(`CHARINDEX(@filter,CONVERT(nvarchar(max),t.${q(filterColumn)}))>0`);
+      const where=conditions.length?'WHERE '+conditions.join(' AND '):'';
       // Sort on the native type where supported; XML and LOBs use their text value.
       const order = ['xml','text','ntext','image'].includes(sortColumn.type) ? cell(sortColumn) : `t.${q(sortColumn.name)}`;
       const tie = pk.filter(c => c.name !== sortColumn.name).map(c => `,t.${q(c.name)}`).join('');
@@ -56,6 +60,28 @@ export function installTables(app, { withDb, sql, identifier: q, fail }) {
   app.post(root, async (req,res) => mutate(req,res,'insert'));
   app.patch(root, async (req,res) => mutate(req,res,'update'));
   app.delete(root, async (req,res) => mutate(req,res,'delete'));
+  app.patch(root+'/batch',async(req,res)=>{
+    const {schema='dbo',name,changes}=req.body;
+    if(!Array.isArray(changes)||!changes.length||changes.length>100)throw fail('Сохранение: 1–100 строк.');
+    await withDb(req.params.database,async p=>{
+      const columns=await metadata(p,schema,name),pk=columns.filter(c=>c.primaryKey);
+      if(!pk.length)throw fail('Для редактирования нужен первичный ключ.');
+      await p.request().batch('SET XACT_ABORT ON; BEGIN TRANSACTION;');
+      try{
+        for(const change of changes){
+          const {keys,values,token}=change||{};
+          if(!keys||!values||typeof values!=='object'||Array.isArray(values)||pk.some(c=>!Object.hasOwn(keys,c.name))||!/^[A-F0-9]{64}$/i.test(token||''))throw fail('Необходимы ключ и версия каждой строки.');
+          const r=p.request().input('token',sql.VarChar(64),token);
+          const assignments=Object.entries(values).map(([name,value],i)=>{const c=columns.find(c=>c.name===name);if(!c?.writable)throw fail('Столбец недоступен для записи: '+name);return `${q(name)}=${parameter(r,c,value,'v'+i)}`;});
+          if(!assignments.length)throw fail('Нет изменений.');
+          const where=pk.map((c,i)=>`t.${q(c.name)}=${parameter(r,c,keys[c.name],'k'+i)}`).join(' AND ');
+          await r.batch(`UPDATE t SET ${assignments.join(',')} FROM ${q(schema)}.${q(name)} t WHERE ${where} AND ${hash(columns)}=@token;
+            IF @@ROWCOUNT<>1 THROW 50010,N'Строка изменена или удалена. Весь пакет отменён. Обновите таблицу.',1;`);
+        }
+        await p.request().batch('COMMIT TRANSACTION;');
+      }catch(e){await p.request().batch('IF @@TRANCOUNT>0 ROLLBACK TRANSACTION;');throw e;}
+    });res.json({ok:true,updated:changes.length});
+  });
   app.post(root + '/import/preview',async(req,res)=>{
     const {schema='dbo',name,records}=req.body;
     if(!Array.isArray(records)||records.length<1||records.length>500)throw fail('Импорт: 1–500 строк.');
