@@ -34,7 +34,7 @@ document.addEventListener('database-changed',safe(async()=>{
 
 // Paged table browser and conflict-aware row editing.
 openTable = async table => {
-  extra.exact={};extra.page=0;extra.filter='';extra.filterColumn='';extra.sort='';extra.direction='ASC';extra.structure=null;
+  extra.filters=null;extra.sorts=[];extra.exact={};extra.page=0;extra.filter='';extra.filterColumn='';extra.sort='';extra.direction='ASC';extra.structure=null;
   state.table=table;renderTables();$('table-detail').hidden=false;$('table-title').textContent=`${table.schema}.${table.name}`;
   $('insert-template').textContent='＋ Запись';$('insert-template').onclick=safe(()=>editRow());
   await loadRows();
@@ -43,7 +43,7 @@ async function loadRows() {
   const table=state.table;if(!table)return;
   const generation=state.generation,view=++extra.viewId;
   $('table-content').textContent='Загрузка…';
-  const params=new URLSearchParams({schema:table.schema,name:table.name,page:extra.page,pageSize:extra.pageSize,filter:extra.filter,filterColumn:extra.filterColumn,sort:extra.sort,direction:extra.direction,exact:JSON.stringify(extra.exact||{})});
+  const params=new URLSearchParams({schema:table.schema,name:table.name,page:extra.page,pageSize:extra.pageSize,filter:extra.filter,filterColumn:extra.filterColumn,sort:extra.sort,direction:extra.direction,exact:JSON.stringify(extra.exact||{}),filters:JSON.stringify(extra.filters||null),sorts:JSON.stringify(extra.sorts||[])});
   const data=await api(`${dbPath()}/data?${params}`);
   if(generation!==state.generation||view!==extra.viewId)return;
   state.columns=data.columns;state.data=data;extra.sort=data.sort;
@@ -89,8 +89,8 @@ $('table-content').onclick=safe(async event=>{
   const action=control.dataset.action,index=Number(control.dataset.index);
   if(action==='edit-row')return editRow(index);if(action==='delete-row')return deleteRow(index);
   if(action==='filter'){extra.filter=$('filter-value').value;extra.filterColumn=$('filter-column').value;extra.page=0;}
-  if(action==='clear-filter'){extra.exact={};extra.filter='';extra.filterColumn='';extra.page=0;}
-  if(action==='sort'){const name=state.columns[index].name;extra.direction=extra.sort===name&&extra.direction==='ASC'?'DESC':'ASC';extra.sort=name;extra.page=0;}
+  if(action==='clear-filter'){extra.filters=null;extra.sorts=[];extra.exact={};extra.filter='';extra.filterColumn='';extra.page=0;}
+  if(action==='sort'){extra.sorts=[];const name=state.columns[index].name;extra.direction=extra.sort===name&&extra.direction==='ASC'?'DESC':'ASC';extra.sort=name;extra.page=0;}
   if(action==='prev-page')extra.page--;if(action==='next-page')extra.page++;
   if(['filter','clear-filter','sort','prev-page','next-page','refresh-data'].includes(action))return loadRows();
   if(action==='export-data')return download(csvText(state.columns.map(c=>c.name),state.data.rows.map(r=>r.values)),`${state.table.name}.csv`,'text/csv;charset=utf-8');

@@ -1,4 +1,8 @@
 import express from 'express';
+import {installIndexDiagnostics} from './lib/index-diagnostics.js';
+import {installDataCompare} from './lib/data-compare.js';
+import {installProcedures} from './lib/procedures.js';
+import {installDataExport} from './lib/data-export.js';
 import { createProtection } from './lib/protection.js';
 import { createDDLHistory } from './lib/ddl-history.js';
 import sql from 'mssql';
@@ -119,16 +123,20 @@ app.get('/api/databases/:database/table', async (req, res) => {
   if (!result.recordset.length) throw fail('Таблица не найдена.', 404);
   res.json(result.recordset);
 });
-const services = { withDb, sql, identifier, fail, connections, store };
+const services = { withDb, sql, identifier, fail, connections, store, ddlHistory };
 services.backups = createBackups(services);
 services.backups.install(app);
 installCreateTable(app, services);
 installCatalog(app, services);
 installCatalogDetails(app, services);
+installIndexDiagnostics(app, services);
+installProcedures(app, services);
 installDiagram(app, services);
 installSchemaTools(app, services);
 installImportFile(app);
-installTables(app, services);
+services.tableData = installTables(app, services);
+installDataExport(app, services);
+installDataCompare(app, services);
 installObjectSearch(app, services);
 installOperations(app, services);
 app.post('/api/query', async (req, res) => {

@@ -1,3 +1,4 @@
+import {selection} from './data-selection.js';
 export function installTables(app, { withDb, sql, identifier: q, fail, connections }) {
   const root = '/api/databases/:database/data';
   const typeName = c => {
@@ -43,18 +44,11 @@ export function installTables(app, { withDb, sql, identifier: q, fail, connectio
       if (filterColumn && !columns.some(c => c.name === filterColumn)) throw fail('Столбец фильтра не найден.');
       const request = p.request().input('offset', sql.Int, page * pageSize).input('limit', sql.Int, pageSize + 1)
         .input('filter', sql.NVarChar(2000), String(filter));
-      let exact={};try{exact=JSON.parse(req.query.exact||'{}');}catch{throw fail('Некорректный точный фильтр.');}
-      if(!exact||typeof exact!=='object'||Array.isArray(exact)||Object.keys(exact).length>16)throw fail('Точный фильтр: до 16 столбцов.');
-      const conditions=Object.entries(exact).map(([name,value],i)=>{const c=columns.find(c=>c.name===name);if(!c)throw fail('Столбец фильтра не найден.');return value===null?`t.${q(name)} IS NULL`:`t.${q(name)}=${parameter(request,c,value,'eq'+i)}`;});
-      if(filterColumn&&filter)conditions.push(`CHARINDEX(@filter,CONVERT(nvarchar(max),t.${q(filterColumn)}))>0`);
-      const where=conditions.length?'WHERE '+conditions.join(' AND '):'';
-      // Sort on the native type where supported; XML and LOBs use their text value.
-      const order = ['xml','text','ntext','image'].includes(sortColumn.type) ? cell(sortColumn) : `t.${q(sortColumn.name)}`;
-      const tie = pk.filter(c => c.name !== sortColumn.name).map(c => `,t.${q(c.name)}`).join('');
+      const selected=selection(columns,req.query,request,{sql,identifier:q,parameter,cell,fail});
       const r = await request.query(`SELECT ${columns.map((c,i) => `${cell(c)} AS ${q('c'+i)}`).join(',')},${hash(columns)} AS token
-        FROM ${q(schema)}.${q(name)} t ${where} ORDER BY ${order} ${direction}${tie} OFFSET @offset ROWS FETCH NEXT @limit ROWS ONLY;`);
+        FROM ${q(schema)}.${q(name)} t ${selected.where} ORDER BY ${selected.order} OFFSET @offset ROWS FETCH NEXT @limit ROWS ONLY;`);
       return { columns, rows: r.recordset.slice(0,pageSize).map(row => ({ values: columns.map((c,i) => row['c'+i]), token: row.token })),
-        hasMore: r.recordset.length > pageSize, page, pageSize, editable: !!pk.length && pk.every(c => writableTypes.has(c.type)), sort: sortColumn.name };
+        hasMore: r.recordset.length > pageSize, page, pageSize, editable: !!pk.length && pk.every(c => writableTypes.has(c.type)), sort: selected.sort };
     }); if(connections.get().readOnly){result.readOnly=true;result.editable=false;result.columns=result.columns.map(c=>({...c,writable:false}));} res.json(result);
   });
   app.post(root, async (req,res) => mutate(req,res,'insert'));
@@ -223,4 +217,5 @@ export function installTables(app, { withDb, sql, identifier: q, fail, connectio
     }
     await withDb(req.params.database,p=>p.request().batch(statement));res.json({ok:true});
   });
+  return {metadata,cell,hash,parameter};
 }

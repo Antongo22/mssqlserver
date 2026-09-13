@@ -6,7 +6,7 @@ export function createProtection({connections}){
   return (req,res,next)=>{
     const path=req.path,c=connections.get();
     if(['GET','HEAD','OPTIONS'].includes(req.method)||/^\/connections(?:\/|$)/.test(path))return next();
-    const readOperation=req.method==='POST'&&(path==='/schema-compare'||path==='/import-file'||/^\/query\/[\w-]+\/cancel$/.test(path)||/^\/backups\/[^/]+\/verify$/.test(path)||/^\/databases\/[^/]+\/data\/import\/preview$/.test(path)||(/^\/databases\/[^/]+\/structure$/.test(path)&&req.body?.preview===true));
+    const readOperation=req.method==='POST'&&(path==='/schema-compare'||path==='/data-compare'||path==='/import-file'||/^\/query\/[\w-]+\/cancel$/.test(path)||/^\/backups\/[^/]+\/verify$/.test(path)||/^\/databases\/[^/]+\/data\/import\/preview$/.test(path)||(/^\/databases\/[^/]+\/structure$/.test(path)&&req.body?.preview===true));
     if(readOperation)return next();
     if(c.readOnly)return res.status(403).json({error:'Подключение в режиме «Только чтение». Изменения, задания, загрузка файлов и произвольный SQL отключены. Данные доступны во вкладке «Таблицы».',code:'STUDIO_READ_ONLY'});
     // Upload only stages a file; the separate restore operation requires confirmation.

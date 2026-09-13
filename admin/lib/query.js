@@ -34,7 +34,7 @@ export function splitBatches(source) {
 }
 
 export const running = new Map();
-export async function executeScript(pool, body, onStart = () => {}) {
+export async function executeScript(pool, body, onStart = () => {}, options = {}) {
   const batches = splitBatches(body.sql);
   if (!batches.length) throw new Error('Введите SQL-запрос.');
   const id = body.id;
@@ -53,14 +53,16 @@ export async function executeScript(pool, body, onStart = () => {}) {
     const request = new sql.Request(pool, { requestTimeout: timeout * 1000 });
     currentRequest = request;
     request.stream = true; request.arrayRowMode = true;
-    let current, error;
+    let current, error, auxiliary=false;
     request.on('error', err => { error ||= err; });
     request.on('recordset', columns => {
+      auxiliary=!!options.outputMarker&&columns[0]?.name===options.outputMarker;if(auxiliary){current=null;return;}
       current = { columns: columns.map(c => c.name), rows: [] };
       if (collect && result.recordsets.length < 20) result.recordsets.push(current);
       else { current = null; if (collect) result.truncated = true; }
     });
     request.on('row', row => {
+      if(auxiliary){if(Buffer.byteLength(JSON.stringify(row))>262144){error=new Error('OUTPUT превышает 256 КБ.');request.cancel();}else result.procedureOutput=row;return;}
       if (!collect) return;
       const size = Buffer.byteLength(JSON.stringify(row));
       if (current && current.rows.length < 1000 && count < 5000 && bytes + size < 4_000_000) {
@@ -69,6 +71,7 @@ export async function executeScript(pool, body, onStart = () => {}) {
     });
     request.on('info', info => { if (result.messages.length < 100) result.messages.push(info.message.slice(0, 4000)); });
     const prefix = collect ? bindParameters(request, body.parameters, sql) : '';
+    if(collect)options.configureRequest?.(request);
     const response = await request.batch(prefix + text);
     currentRequest = null;
     if (cancelled) throw new Error(reason);

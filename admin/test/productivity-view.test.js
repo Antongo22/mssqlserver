@@ -4,7 +4,7 @@ import vm from 'node:vm';
 import { readFile } from 'node:fs/promises';
 import { parseHTML } from 'linkedom';
 const html=await readFile(new URL('../public/index.html',import.meta.url),'utf8');
-const scripts=await Promise.all(['app.js','advanced.js','productivity.js','import-preview.js','plan-tree.js','data-workbench.js','navigation.js','governance.js','catalog-view.js'].map(f=>readFile(new URL('../public/'+f,import.meta.url),'utf8')));
+const scripts=await Promise.all(['app.js','advanced.js','productivity.js','import-preview.js','plan-tree.js','data-workbench.js','navigation.js','governance.js','catalog-view.js','data-tools.js','workflow-tools.js','data-compare-view.js'].map(f=>readFile(new URL('../public/'+f,import.meta.url),'utf8')));
 function setup(){
   const {window,document,CustomEvent,Event,DOMParser}=parseHTML(html),data=new Map(),calls=[];
   const $=id=>document.getElementById(id),dialog=$('modal');dialog.showModal=()=>{dialog.open=true;};dialog.close=()=>{dialog.open=false;dialog.dispatchEvent(new Event('close'));};
@@ -19,7 +19,7 @@ function setup(){
     if(url.endsWith('/import/preview'))return {valid:true,errors:[],rows:1};
     return [];
   };
-  const context=vm.createContext({window,document,CustomEvent,Event,DOMParser,FormData,console,crypto:globalThis.crypto,URL,URLSearchParams,Blob,setTimeout,clearTimeout,localStorage:{getItem:k=>data.get(k)||null,setItem:(k,v)=>data.set(k,v)},fetch:async(url,options)=>{calls.push({url,options});return {ok:true,json:async()=>respond(url,options)};}});
+  const context=vm.createContext({window,document,CustomEvent,Event,DOMParser,FormData,AbortController,TextDecoder,console,crypto:globalThis.crypto,URL,URLSearchParams,Blob,setTimeout,clearTimeout,localStorage:{getItem:k=>data.get(k)||null,setItem:(k,v)=>data.set(k,v)},fetch:async(url,options)=>{calls.push({url,options});return {ok:true,json:async()=>respond(url,options)};}});
   for(const script of scripts)vm.runInContext(script,context);
   return {$,document,context,calls,data,respond:fn=>{respond=fn;},evaluate:code=>vm.runInContext(code,context),Event,CustomEvent};
 }
@@ -80,4 +80,24 @@ test('catalog filters index columns and opens read-only properties instead of ex
   await $('objects-panel').onclick({target:$('object-list').querySelector('[data-action="index-details"]')});assert.match($('modal-body').textContent,/INCLUDE/);assert.match($('modal-body').textContent,/IncludedLabel/);$('modal').close();
   await evaluate('showObjectDetails(extra.objects[0])');assert.match($('modal-body').textContent,/@Name/);assert.match($('modal-body').textContent,/nvarchar\(80\)/);assert.equal($('modal-body').querySelectorAll('script').length,0);
   assert.ok(calls.every(c=>!c.options?.method||c.options.method==='GET'),'viewing metadata must never execute SQL');
+});
+test('FK picker fills both columns of a composite key without losing unsaved row fields',async()=>{
+ const {$,evaluate,respond}=setup();await new Promise(r=>setTimeout(r,20));
+ evaluate("Object.defineProperty(window.HTMLSelectElement.prototype,'value',{configurable:true,get(){const o=this.querySelector('option[selected]')||this.querySelector('option');return o?(o.getAttribute('value')??o.textContent):'';},set(v){for(const o of this.querySelectorAll('option')){if((o.getAttribute('value')??o.textContent)===v)o.setAttribute('selected','');else o.removeAttribute('selected');}}});");
+ respond(url=>{
+  if(url.endsWith('/diagram'))return {tables:[{id:1,schema:'dbo',name:'Child',columns:[{id:1,name:'Id'},{id:2,name:'ParentId'},{id:3,name:'Version'},{id:4,name:'Note'}]},{id:2,schema:'dbo',name:'Parent',columns:[{id:1,name:'Id'},{id:2,name:'Version'},{id:3,name:'Label'}]}],foreignKeys:[{name:'FK_Composite',childTableId:1,parentTableId:2,columns:[{childColumnId:2,parentColumnId:1},{childColumnId:3,parentColumnId:2}]}]};
+  if(url.includes('/data?'))return {columns:[{name:'Id'},{name:'Version'},{name:'Label'}],rows:[{values:['9007199254740993','2','Customer']}],hasMore:false};return [];
+ });
+ evaluate("state.table={id:1,schema:'dbo',name:'Child'};state.columns=[{name:'Id',writable:false,identity:true},{name:'ParentId',writable:true},{name:'Version',writable:true},{name:'Note',writable:true}];state.data={rows:[]};editRow();");
+ await new Promise(r=>setTimeout(r,10));$('modal-body').querySelector('[data-value="3"]').value='Unsaved note';
+ const button=[...$('modal-body').querySelectorAll('button')].find(b=>b.textContent.includes('FK_Composite'));assert.ok(button);await button.onclick();
+ const option=$('modal-body').querySelector('[data-pick]');assert.ok(option);option.parentElement.onclick({target:option});
+ assert.equal($('modal-body').querySelector('[data-value="1"]').value,'9007199254740993');assert.equal($('modal-body').querySelector('[data-value="2"]').value,'2');assert.equal($('modal-body').querySelector('[data-value="3"]').value,'Unsaved note');
+});
+test('advanced filter builder preserves nested groups and sort priority',async()=>{
+ const {$,evaluate,respond}=setup();await new Promise(r=>setTimeout(r,20));
+ evaluate("state.table={schema:'dbo',name:'Items'};state.columns=[{name:'Id'},{name:'Value'}];extra.filters={logic:'AND',rules:[{column:'Id',op:'>=',value:'2'},{logic:'OR',rules:[{column:'Value',op:'IS NULL'}]}]};extra.sorts=[{column:'Value',direction:'DESC'},{column:'Id',direction:'ASC'}];openFilters();");
+ assert.equal($('filter-builder').querySelectorAll('.filter-group').length,2);assert.equal($('sort-builder').children.length,2);
+ respond(()=>({columns:[{name:'Id'},{name:'Value'}],rows:[],sort:'Value'}));await $('modal-form').onsubmit({preventDefault(){},target:$('modal-form')});
+ assert.equal(evaluate('extra.filters.rules[1].logic'),'OR');assert.equal(evaluate('extra.sorts[0].direction'),'DESC');
 });
