@@ -1,5 +1,5 @@
 const $ = id => document.getElementById(id);
-const state = { connection: 'local', queryParameters: undefined, databases: [], database: null, tables: [], table: null, columns: [], data: null, results: null, resultIndex: 0, busy: false, generation: 0 };
+const state = { workspace: 'database', connection: 'local', queryParameters: undefined, databases: [], database: null, tables: [], table: null, columns: [], data: null, results: null, resultIndex: 0, busy: false, generation: 0 };
 const esc = value => String(value ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const quote = value => `[${value.replaceAll(']', ']]')}]`;
 const dbPath = () => `/api/databases/${encodeURIComponent(state.database)}`;
@@ -23,13 +23,26 @@ async function api(path, options = {}) {
 }
 function notice(message, error = false) { $('notice').textContent = message; $('notice').className = error ? 'error' : ''; $('notice').hidden = !message; }
 function safe(action) { return async (...args) => { try { await action(...args); } catch (error) { notice(error.message, true); } }; }
+function showWorkspace(name) {
+  const target = name === 'designer' ? $('designer-panel') : $('database-workspace');
+  if (!target) return;
+  state.workspace = name;
+  $('database-workspace').hidden = name !== 'database';
+  if ($('designer-panel')) $('designer-panel').hidden = name !== 'designer';
+  $('open-designer').classList.toggle('active', name === 'designer');
+  $('open-designer').setAttribute('aria-pressed', String(name === 'designer'));
+  $('breadcrumb').textContent = name === 'designer' ? 'Конструктор БД' : state.database || 'SQL Server';
+  target.prepend($('notice'));
+  renderDatabases();
+  document.dispatchEvent(new CustomEvent('workspace-changed', { detail: name }));
+}
 function renderDatabases() {
   const search = $('db-search').value.toLowerCase();
   let systemHeading = false;
   $('databases').innerHTML = state.databases.filter(d => d.name.toLowerCase().includes(search)).map(d => {
     const heading = d.id <= 4 && !systemHeading ? '<div class="side-group">СИСТЕМНЫЕ</div>' : '';
     if (d.id <= 4) systemHeading = true;
-    return `${heading}<button class="db-item ${d.name === state.database ? 'active' : ''}" data-db="${esc(d.name)}" title="${esc(d.name)}"><span>▤</span><span class="db-name">${esc(d.name)}</span>${d.id <= 4 ? '<span class="db-type">SYS</span>' : ''}</button>`;
+    return `${heading}<button class="db-item ${state.workspace === 'database' && d.name === state.database ? 'active' : ''}" data-db="${esc(d.name)}" title="${esc(d.name)}"><span>▤</span><span class="db-name">${esc(d.name)}</span>${d.id <= 4 ? '<span class="db-type">SYS</span>' : ''}</button>`;
   }).join('') || '<p class="muted">Базы не найдены</p>';
 }
 async function loadDatabases(preferred) {
@@ -41,16 +54,17 @@ async function loadDatabases(preferred) {
   $('server-version').textContent = `Версия ${data.server.version}`;
   $('footer-status').textContent = 'Подключено · localhost';
   const selected = preferred || state.database;
-  await selectDatabase(data.databases.find(d => d.name === selected)?.name || data.databases[0]?.name);
+  await selectDatabase(data.databases.find(d => d.name === selected)?.name || data.databases[0]?.name, { reveal: state.workspace !== 'designer' });
 }
-async function selectDatabase(name) {
+async function selectDatabase(name, { reveal = true } = {}) {
   if (!name) return;
   if (state.busy) throw new Error('Сначала завершите или отмените текущий SQL-запрос.');
   state.database = name; state.table = null; state.columns = []; state.data = null;
   const generation = ++state.generation;
   document.dispatchEvent(new CustomEvent('database-changing'));
   const database = state.databases.find(d => d.name === name);
-  $('database-title').textContent = name; $('breadcrumb').textContent = name; $('query-database').textContent = name;
+  if (reveal) showWorkspace('database');
+  $('database-title').textContent = name; $('breadcrumb').textContent = state.workspace === 'designer' ? 'Конструктор БД' : name; $('query-database').textContent = name;
   $('database-meta').textContent = `${database.state} · ${Number(database.sizeMB).toLocaleString('ru-RU')} МБ · ${database.collation || '—'}`;
   $('delete-database').disabled = database.id <= 4 || state.busy;
   $('new-table').disabled = database.state !== 'ONLINE' || state.busy;
@@ -103,6 +117,7 @@ function showStructure() {
   }));
 }
 function tab(name) {
+  showWorkspace('database');
   for (const button of document.querySelectorAll('.tabs [role="tab"]')) {
     const active = button.id === name + '-tab';
     $(button.getAttribute('aria-controls')).hidden = !active;

@@ -56,6 +56,20 @@ test('designer keeps edits made during save and safely renders imported projects
  const copy=draft();$('design-import').click();$('modal-form').elements.file.files=[{size:500,text:async()=>JSON.stringify({name:'Imported',model:copy.model})}];await submit();assert.equal(draft().name,'Imported');assert.equal(draft().project,null);assert.equal(draft().model.tables.length,1);assert.equal($('design-svg').querySelectorAll('script').length,0);
  assert.equal(calls.filter(c=>c.options?.method==='POST').length,1);assert.equal(calls.find(c=>c.options?.method==='POST').url,'/api/designs');
 });
+test('sidebar designer opens an independent workspace without a database and preserves its draft across navigation',async()=>{
+ const {$,evaluate,document,calls,addTable,draft}=designerHarness();await new Promise(r=>setTimeout(r,20));
+ assert.ok($('open-designer').closest('.sidebar'));assert.equal($('designer-tab'),null);assert.equal($('designer-panel').parentElement.tagName,'MAIN');
+ evaluate("state.database=null;state.databases=[];renderDatabases();");
+ const count=calls.length;await $('open-designer').onclick();assert.equal(calls.length,count,'opening the designer must not query a database');
+ assert.equal($('database-workspace').hidden,true);assert.equal($('designer-panel').hidden,false);assert.equal($('open-designer').getAttribute('aria-pressed'),'true');assert.equal($('breadcrumb').textContent,'Конструктор БД');
+ await addTable('Independent');const original=JSON.stringify(draft().model);
+ await evaluate('loadDatabases()');assert.equal($('database-workspace').hidden,true,'background connection refresh must not leave the designer');assert.equal($('breadcrumb').textContent,'Конструктор БД');assert.equal(document.querySelectorAll('#databases .active').length,0);
+ $('design-back').click();assert.equal($('database-workspace').hidden,false);assert.equal($('designer-panel').hidden,true);assert.equal($('breadcrumb').textContent,'Demo');assert.equal($('open-designer').getAttribute('aria-pressed'),'false');
+ evaluate("tab('query')");await $('open-designer').onclick();$('design-back').click();assert.equal($('query-panel').hidden,false,'returning must preserve the previous database tab');
+ await $('open-designer').onclick();await $('databases').onclick({target:$('databases').querySelector('[data-db]')});assert.equal($('designer-panel').hidden,true);assert.equal($('database-workspace').hidden,false);assert.equal(JSON.stringify(draft().model),original);
+ assert.ok([...document.querySelectorAll('[role=tabpanel]')].every(p=>p.closest('#database-workspace')),'database tools must stay inside their own workspace');
+ evaluate('window.studioHasDrafts=()=>true');await $('open-designer').onclick();assert.equal($('designer-panel').hidden,true);assert.match($('notice').textContent,/изменения ячеек/);
+});
 test('SQL previews never apply on first submit and reset on closing the dialog',async()=>{
   const {$,evaluate,calls}=setup();await new Promise(r=>setTimeout(r,20));
   evaluate("modal('Изменение','',async()=>{});");

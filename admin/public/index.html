@@ -25,6 +25,7 @@
 <aside class="sidebar">
   <div class="brand"><img class="brand-icon" src="/icon.svg" width="40" height="40" alt=""><div>MSSQL <strong>Studio</strong><small>ЛОКАЛЬНАЯ КОНСОЛЬ</small></div></div>
   <div class="connection"><span class="dot"></span><div>SQL Server 2022<small id="connection-status">Подключение…</small></div><span class="local-tag">LOCAL</span></div>
+  <button id="open-designer" class="button full sidebar-workspace" type="button" aria-controls="designer-panel" aria-pressed="false">✎ &nbsp; Конструктор БД</button>
   <div class="side-heading"><span>БАЗЫ ДАННЫХ</span><button id="refresh" class="icon-button" title="Обновить базы" aria-label="Обновить базы">↻</button></div>
   <label class="search"><span>⌕</span><input id="db-search" type="search" placeholder="Найти базу…" aria-label="Найти базу"></label>
   <nav id="databases" aria-label="Базы данных"><p class="muted">Загрузка…</p></nav>
@@ -33,7 +34,7 @@
 </aside>
 <main>
   <header class="topbar"><span>Рабочее пространство <span class="slash">/</span> <strong id="breadcrumb">SQL Server</strong></span><div class="topbar-actions"><button class="button" id="theme-toggle" type="button" aria-label="Переключить тему" aria-pressed="false"><svg class="theme-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><path d="M20.5 14A8.5 8.5 0 0 1 10 3.5 8.5 8.5 0 1 0 20.5 14Z"/></svg><svg class="theme-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2m0 16v2M2 12h2m16 0h2M5 5l1.5 1.5m11 11L19 19M5 19l1.5-1.5m11-11L19 5"/></svg><span id="theme-label">Тёмная тема</span></button><span class="user-badge">sa <span>Администратор</span></span></div></header>
-  <div class="workspace">
+  <div class="workspace" id="database-workspace">
     <section class="page-heading"><div><div class="eyebrow">ОБОЗРЕВАТЕЛЬ БАЗЫ</div><h1 id="database-title">Выберите базу</h1><p id="database-meta" class="muted">Подключаемся к локальному SQL Server</p></div><button id="delete-database" class="button danger subtle" disabled>Удалить базу</button></section>
     <div id="notice" role="status" hidden></div>
     <div class="tabs" role="tablist" aria-label="Разделы базы"><button class="tab active" id="tables-tab" role="tab" aria-selected="true" aria-controls="tables-panel">▦ &nbsp; Таблицы <span id="table-count">0</span></button><button class="tab" id="query-tab" role="tab" aria-selected="false" aria-controls="query-panel">⌘ &nbsp; SQL-редактор</button></div>
