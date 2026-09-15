@@ -3,9 +3,12 @@ import assert from 'node:assert/strict';
 import vm from 'node:vm';
 import { readFile } from 'node:fs/promises';
 import { parseHTML } from 'linkedom';
+import { build } from 'esbuild';
+import { fileURLToPath } from 'node:url';
+const designerScript=(await build({entryPoints:[fileURLToPath(new URL('../designer-entry.js',import.meta.url))],bundle:true,write:false})).outputFiles[0].text;
 const html=await readFile(new URL('../public/index.html',import.meta.url),'utf8');
 const scripts=await Promise.all(['app.js','advanced.js','productivity.js','import-preview.js','plan-tree.js','data-workbench.js','navigation.js','governance.js','catalog-view.js','data-tools.js','workflow-tools.js','data-compare-view.js'].map(f=>readFile(new URL('../public/'+f,import.meta.url),'utf8')));
-function setup(){
+function setup(designer=false){
   const {window,document,CustomEvent,Event,DOMParser}=parseHTML(html),data=new Map(),calls=[];
   const $=id=>document.getElementById(id),dialog=$('modal');dialog.showModal=()=>{dialog.open=true;};dialog.close=()=>{dialog.open=false;dialog.dispatchEvent(new Event('close'));};
   window.HTMLElement.prototype.scrollIntoView=()=>{};
@@ -19,10 +22,40 @@ function setup(){
     if(url.endsWith('/import/preview'))return {valid:true,errors:[],rows:1};
     return [];
   };
-  const context=vm.createContext({window,document,CustomEvent,Event,DOMParser,FormData,AbortController,TextDecoder,console,crypto:globalThis.crypto,URL,URLSearchParams,Blob,setTimeout,clearTimeout,localStorage:{getItem:k=>data.get(k)||null,setItem:(k,v)=>data.set(k,v)},fetch:async(url,options)=>{calls.push({url,options});return {ok:true,json:async()=>respond(url,options)};}});
+  const context=vm.createContext({window,document,CustomEvent,Event,DOMParser,FormData,AbortController,TextDecoder,structuredClone,console,crypto:globalThis.crypto,URL,URLSearchParams,Blob,setTimeout,clearTimeout,localStorage:{getItem:k=>data.get(k)||null,setItem:(k,v)=>data.set(k,v)},fetch:async(url,options)=>{calls.push({url,options});return {ok:true,json:async()=>respond(url,options)};}});
   for(const script of scripts)vm.runInContext(script,context);
+  if(designer)vm.runInContext(designerScript,context);
   return {$,document,context,calls,data,respond:fn=>{respond=fn;},evaluate:code=>vm.runInContext(code,context),Event,CustomEvent};
 }
+function designerHarness(){
+ const h=setup(true),{$,evaluate}=h;
+ evaluate("Object.defineProperty(window.HTMLSelectElement.prototype,'value',{configurable:true,get(){const o=this.querySelector('option[selected]')||this.querySelector('option');return o?(o.getAttribute('value')??o.textContent):'';},set(v){for(const o of this.querySelectorAll('option')){if((o.getAttribute('value')??o.textContent)===v)o.setAttribute('selected','');else o.removeAttribute('selected');}}});");
+ const viewport=$('design-viewport');Object.defineProperties(viewport,{clientWidth:{value:800},clientHeight:{value:650}});viewport.getBoundingClientRect=()=>({left:0,top:0});viewport.setPointerCapture=()=>{};viewport.hasPointerCapture=()=>false;
+ const submit=async()=>{await $('modal-form').onsubmit({preventDefault(){},target:$('modal-form')});assert.equal($('modal').open,false,$('modal-error').textContent);};
+ const addTable=async name=>{await $('design-table').onclick();$('modal-form').elements.name.value=name;for(const c of $('design-columns').querySelectorAll('[type=checkbox]'))c.checked=c.hasAttribute('checked');await submit();};
+ return {...h,viewport,submit,addTable,draft:()=>JSON.parse(h.data.get('studio.designer.draft.v1'))};
+}
+test('manual designer edits tables, creates FK fields, drags and undoes without executing SQL',async()=>{
+ const {$,calls,viewport,submit,addTable,draft}=designerHarness();await new Promise(r=>setTimeout(r,20));
+ await addTable('Customers');await addTable('Orders');
+ await $('design-link').onclick();assert.equal($('design-pairs').children.length,1);await submit();
+ const model=draft().model;assert.equal(model.relations.length,1);assert.equal(model.tables[1].columns[1].name,'Customers_Id');assert.equal(model.tables[1].columns[1].identity,false);assert.equal(model.tables[1].columns[1].type,'INT');
+ const target=$('design-svg').querySelector('[data-table]'),id=target.dataset.table,before=target.getAttribute('transform');
+ viewport.onpointerdown({button:0,target,clientX:50,clientY:60,pointerId:1,preventDefault(){}});viewport.onpointermove({clientX:120,clientY:100});await viewport.onpointerup({pointerId:1});
+ assert.notEqual($('design-svg').querySelector(`[data-table="${id}"]`).getAttribute('transform'),before);
+ $('design-undo').click();assert.equal($('design-svg').querySelector(`[data-table="${id}"]`).getAttribute('transform'),before);$('design-redo').click();
+ await viewport.onkeydown({key:'Enter',target:$('design-svg').querySelector(`[data-table="${id}"]`)});await $('design-delete').onclick();assert.equal(draft().model.tables.length,1);assert.equal(draft().model.relations.length,0);$('design-undo').click();assert.equal(draft().model.relations.length,1);
+ await $('design-sql').onclick();assert.match($('modal-body').textContent,/REFERENCES \[dbo\]\.\[Customers\]/);assert.ok($('design-sql-download'));assert.ok(calls.every(c=>!c.options?.method||c.options.method==='GET'));
+});
+test('designer keeps edits made during save and safely renders imported projects and notes',async()=>{
+ const {$,respond,calls,submit,addTable,draft}=designerHarness();await new Promise(r=>setTimeout(r,20));await addTable('Items');
+ let finish;respond((url,options)=>url==='/api/designs'?new Promise(resolve=>{finish=()=>resolve({id:'saved-design',revision:1,...JSON.parse(options.body)});}):[]);
+ const pending=$('design-save').onclick();await new Promise(r=>setTimeout(r,0));$('design-name').value='Newer draft';$('design-name').onchange();finish();await pending;
+ assert.equal(draft().project.id,'saved-design');assert.equal(JSON.parse(draft().saved).name,'Новый проект');assert.equal(draft().name,'Newer draft');assert.match($('design-status').textContent,/ещё не сохранены/);
+ $('design-note').click();$('modal-form').elements.text.value='<script>alert(1)</script> & text';await submit();assert.equal($('design-svg').querySelectorAll('script').length,0);assert.ok($('design-svg').textContent.includes('<script>'));
+ const copy=draft();$('design-import').click();$('modal-form').elements.file.files=[{size:500,text:async()=>JSON.stringify({name:'Imported',model:copy.model})}];await submit();assert.equal(draft().name,'Imported');assert.equal(draft().project,null);assert.equal(draft().model.tables.length,1);assert.equal($('design-svg').querySelectorAll('script').length,0);
+ assert.equal(calls.filter(c=>c.options?.method==='POST').length,1);assert.equal(calls.find(c=>c.options?.method==='POST').url,'/api/designs');
+});
 test('SQL previews never apply on first submit and reset on closing the dialog',async()=>{
   const {$,evaluate,calls}=setup();await new Promise(r=>setTimeout(r,20));
   evaluate("modal('Изменение','',async()=>{});");

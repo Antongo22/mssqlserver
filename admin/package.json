@@ -6,7 +6,7 @@
   "scripts": {
     "start": "node server.js",
     "test": "node --test test/*.test.js",
-    "build": "esbuild editor-entry.js --bundle --minify --outfile=public/editor.js && esbuild diagram-entry.js --bundle --minify --outfile=public/diagram.js && cp node_modules/elkjs/lib/elk-worker.min.js public/elk-worker.min.js"
+    "build": "esbuild editor-entry.js --bundle --minify --outfile=public/editor.js && esbuild diagram-entry.js --bundle --minify --outfile=public/diagram.js && esbuild designer-entry.js --bundle --minify --outfile=public/designer.js && cp node_modules/elkjs/lib/elk-worker.min.js public/elk-worker.min.js"
   },
   "dependencies": {
     "@codemirror/autocomplete": "^6.20.3",

@@ -1,4 +1,5 @@
 import express from 'express';
+import {installDesigns} from './lib/designs.js';
 import {installIndexDiagnostics} from './lib/index-diagnostics.js';
 import {installDataCompare} from './lib/data-compare.js';
 import {installProcedures} from './lib/procedures.js';
@@ -65,6 +66,8 @@ app.use((req, res, next) => {
 app.use(express.json({ limit: '2mb' }));
 app.use('/api', connections.middleware);
 connections.install(app);
+// Draft projects only touch the configuration store, even on read-only profiles.
+installDesigns(app,{store,fail});
 app.use('/api', createProtection({connections}));
 ddlHistory.install(app);
 app.get('/health', async (req, res) => {
