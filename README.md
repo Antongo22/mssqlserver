@@ -1,5 +1,26 @@
 # SQL Server в Docker
 
+Учебный SQL Server 2022 Developer. Нужны запущенный Docker Desktop и Docker Compose.
+На Apple Silicon используется `linux/amd64` через эмуляцию. Microsoft официально
+не поддерживает этот режим: https://learn.microsoft.com/en-us/sql/linux/quickstart-install-connect-docker?view=sql-server-ver17
+Developer предназначен для разработки и тестирования.
+
+## Запуск и проверка
+
+```bash
+./scripts/start.sh
+./scripts/check.sh
+```
+
+Compose собирает локальный образ из `Dockerfile` в текущей директории.
+SQL-файлы также копируются в контейнер в `/usr/src/sql/`.
+После изменения Dockerfile или SQL-файлов пересоберите образ: `docker compose up -d --build --wait`.
+
+При первом запуске скрипт создаёт `.env` со случайным паролем `sa`, скачивает образ
+и ждёт готовности сервера. Проверка показывает версию, создаёт `LearningDB` и таблицу
+`dbo.Students`, проверяет добавление, чтение, изменение и удаление записи.
+Тестовые изменения откатываются; существующие записи сохраняются.
+
 ## GUI и сервер одной командой
 
 ```bash
@@ -266,27 +287,6 @@ cd admin
 npm ci
 npm test
 ```
-
-Учебный SQL Server 2022 Developer. Нужны запущенный Docker Desktop и Docker Compose.
-На Apple Silicon используется `linux/amd64` через эмуляцию. Microsoft официально
-не поддерживает этот режим: https://learn.microsoft.com/en-us/sql/linux/quickstart-install-connect-docker?view=sql-server-ver17
-Developer предназначен для разработки и тестирования.
-
-## Запуск и проверка
-
-```bash
-./scripts/start.sh
-./scripts/check.sh
-```
-
-Compose собирает локальный образ из `Dockerfile` в текущей директории.
-SQL-файлы также копируются в контейнер в `/usr/src/sql/`.
-После изменения Dockerfile или SQL-файлов пересоберите образ: `docker compose up -d --build --wait`.
-
-При первом запуске скрипт создаёт `.env` со случайным паролем `sa`, скачивает образ
-и ждёт готовности сервера. Проверка показывает версию, создаёт `LearningDB` и таблицу
-`dbo.Students`, проверяет добавление, чтение, изменение и удаление записи.
-Тестовые изменения откатываются; существующие записи сохраняются.
 
 ## Свои запросы
 
