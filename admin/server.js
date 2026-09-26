@@ -10,6 +10,7 @@ import sql from 'mssql';
 import { fileURLToPath } from 'node:url';
 import { randomUUID } from 'node:crypto';
 import { executeScript, running } from './lib/query.js';
+import { createQuerySessions } from './lib/query-sessions.js';
 import { installCatalogDetails } from './lib/catalog-details.js';
 import { installCatalog } from './lib/catalog.js';
 import { installObjectSearch } from './lib/object-search.js';
@@ -36,6 +37,7 @@ const config = {
 const fail = (message, status = 400) => Object.assign(new Error(message), { status });
 const store = await createStore(process.env.STUDIO_DIR || '.studio');
 const connections = createConnections({ store, config, sql, fail });
+const querySessions = createQuerySessions({ connections, fail });
 const ddlHistory = createDDLHistory({store,connections});
 function identifier(value) {
   if (typeof value !== 'string' || !value.trim() || value.length > 128 || /[\x00-\x1f]/.test(value)) {
@@ -49,6 +51,11 @@ async function withDb(database, fn, options = {}) {
   pool.on('error', () => {});
   try { await pool.connect(); if(options.audit!==false)ddlHistory.observe(pool,database); return await fn(pool); }
   finally { await pool.close(); }
+}
+async function runScript(database, body, onCancel) {
+  const execute = pool => executeScript(pool, body, onCancel, body.sessionId ? { resetSession: true } : {});
+  if (body.sessionId) return querySessions.run(body.sessionId, database, execute);
+  return withDb(database, execute, { audit: false });
 }
 app.disable('x-powered-by');
 app.use((req, res, next) => {
@@ -146,14 +153,21 @@ app.post('/api/query', async (req, res) => {
   if (typeof req.body.sql !== 'string' || !req.body.sql.trim()) throw fail('Введите SQL-запрос.');
   const start = performance.now();
   const body = { ...req.body, id: req.body.id || randomUUID() };
+  if (body.sessionId && (body.mode === 'estimated' || body.mode === 'actual')) {
+    throw fail('Графический план выполняется без сохранённой сессии. Снимите «Сессия (#temp)» или выполните обычный запрос.');
+  }
   let disconnect;
   try {
-    const result = await ddlHistory.run(body.database,body.sql,()=>withDb(body.database, p => executeScript(p, body, cancel => {
+    const result = await ddlHistory.run(body.database, body.sql, () => runScript(body.database, body, cancel => {
       disconnect = () => { if (!res.writableEnded) cancel('Клиент отключился.'); };
       res.on('close', disconnect);
-    }),{audit:false}),{transaction:body.transaction,estimated:body.mode==='estimated'});
-    res.json({ ...result, durationMs: Math.round(performance.now() - start) });
+    }), { transaction: body.transaction, estimated: body.mode === 'estimated' });
+    res.json({ ...result, durationMs: Math.round(performance.now() - start), sessionId: body.sessionId || undefined });
   } finally { if (disconnect) res.off('close', disconnect); }
+});
+app.delete('/api/query-session/:id', async (req, res) => {
+  await querySessions.close(req.params.id);
+  res.json({ ok: true });
 });
 app.post('/api/query/:id/cancel', (req,res) => {
   const cancel = running.get(req.params.id);

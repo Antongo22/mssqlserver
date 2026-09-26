@@ -99,5 +99,11 @@ export async function executeScript(pool, body, onStart = () => {}, options = {}
     throw error;
   } finally {
     clearTimeout(timer); running.delete(id);
+    // Persistent sessions keep the pool open — clear plan/statistics flags so the next Execute is normal.
+    if (options.resetSession) {
+      try {
+        await pool.request().batch('SET SHOWPLAN_XML OFF; SET STATISTICS XML OFF; SET STATISTICS IO OFF; SET STATISTICS TIME OFF;');
+      } catch { /* pool may already be closed */ }
+    }
   }
 }

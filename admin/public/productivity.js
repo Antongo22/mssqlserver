@@ -16,6 +16,7 @@ function connectionBadge(){
 async function refreshConnections(){connectionProfiles=await api('/api/connections');$('connection-select').innerHTML=connectionProfiles.map(c=>`<option value="${c.id}">${esc(c.name)} · ${environments[c.environment]}</option>`).join('');connectionBadge();}
 async function switchConnection(id){
   if(state.busy||$('modal').open){$('connection-select').value=state.connection;throw new Error('Завершите текущий запрос или закройте форму перед сменой сервера.');}
+  if(state.querySessionId)await closeQuerySession();
   state.connection=id;state.database=null;state.table=null;state.tables=[];state.queryParameters=undefined;state.generation++;
   window.sqlEditor?.setSchema({});$('tables-list').replaceChildren();$('table-detail').hidden=true;$('database-title').textContent='Подключение…';$('database-meta').textContent='';
   for(const id of ['new-table','run-query','delete-database'])$(id).disabled=true;
@@ -74,8 +75,22 @@ async function initCompare(){
   for(const side of ['source','target'])form.elements[side+'Connection'].onchange=safe(()=>databases(side));
   await Promise.all(['source','target'].map(databases));
   form.onsubmit=safe(async e=>{e.preventDefault();const b=form.querySelector('button');b.disabled=true;try{const values=formValues(form);const r=await api('/api/schema-compare',{method:'POST',body:values});if(!form.isConnected)return;
-    $('compare-result').innerHTML=`<h3>${r.changes.length} различий</h3>${r.warnings.map(w=>`<p class="query-warning">${esc(w)}</p>`).join('')}<div class="panel">${r.changes.map(c=>`<details class="diff-item"><summary>${esc(c.kind)} · ${esc(c.object)}</summary><div class="tools-columns"><pre class="sql-preview">${esc(c.before||'Отсутствует в приёмнике')}</pre><pre class="sql-preview">${esc(c.after||'Отсутствует в источнике')}</pre></div></details>`).join('')||'<p>Сравниваемые объекты совпадают.</p>'}</div><h3>SQL переноса</h3><p class="muted">Объекты только в приёмнике сохраняются. Предупреждения требуют ручной доработки скрипта.</p><pre class="sql-preview">${esc(r.sql)}</pre><button class="button primary" id="compare-stage">Открыть SQL в приёмнике</button> <button class="button" id="compare-download">↓ .sql</button>`;
-    $('compare-download').onclick=()=>download(r.sql,'schema-migration.sql');$('compare-stage').onclick=safe(async()=>{if(state.connection!==values.targetConnection)await switchConnection(values.targetConnection);await loadDatabases(values.targetDatabase);stageSQL(r.sql,'Миграция схемы');});
+    $('compare-result').innerHTML=`<h3>${r.changes.length} различий</h3>${r.warnings.map(w=>`<p class="query-warning">${esc(w)}</p>`).join('')}<div class="panel">${r.changes.map(c=>`<details class="diff-item"><summary>${esc(c.kind)} · ${esc(c.object)}</summary><div class="tools-columns"><pre class="sql-preview">${esc(c.before||'Отсутствует в приёмнике')}</pre><pre class="sql-preview">${esc(c.after||'Отсутствует в источнике')}</pre></div></details>`).join('')||'<p>Сравниваемые объекты совпадают.</p>'}</div><h3>SQL переноса</h3><p class="muted">Объекты только в приёмнике сохраняются. Предупреждения требуют ручной доработки скрипта. Применение выполняет скрипт на приёмнике; это не откатываемая миграция.</p><pre class="sql-preview">${esc(r.sql)}</pre><div class="actions"><button class="button primary" id="compare-apply" ${r.changes.length?'':'disabled'}>▶ Применить к приёмнику</button><button class="button" id="compare-stage">Открыть SQL в приёмнике</button><button class="button" id="compare-download">↓ .sql</button></div>`;
+    $('compare-download').onclick=()=>download(r.sql,'schema-migration.sql');
+    $('compare-stage').onclick=safe(async()=>{if(state.connection!==values.targetConnection)await switchConnection(values.targetConnection);await loadDatabases(values.targetDatabase);stageSQL(r.sql,'Миграция схемы');});
+    $('compare-apply').onclick=safe(async()=>{
+      if(!r.changes.length)return;
+      const targetName=connectionProfiles.find(c=>c.id===values.targetConnection)?.name||values.targetConnection;
+      confirmAction('Применить миграцию схемы',values.targetDatabase,async confirm=>{
+        if(confirm!==values.targetDatabase)throw new Error('Введите точное имя базы приёмника.');
+        const button=$('compare-apply');button.disabled=true;button.textContent='Применение…';
+        try{
+          await applySQLScript({connection:values.targetConnection,database:values.targetDatabase,sql:r.sql});
+          notice(`Миграция применена к ${targetName} / ${values.targetDatabase}. Повторите сравнение для проверки.`);
+          $('compare-result').insertAdjacentHTML('afterbegin','<p class="query-warning">Скрипт выполнен на приёмнике. Повторите сравнение, чтобы увидеть оставшиеся различия.</p>');
+        }finally{button.disabled=false;button.textContent='▶ Применить к приёмнику';}
+      },`Приёмник: ${targetName} / ${values.targetDatabase}. ${r.changes.length} изменений. Предупреждения в отчёте не блокируют запуск — проверьте SQL перед подтверждением.`);
+    });
   }finally{b.disabled=false;}});
 }
 document.addEventListener('workspace-tab-changed',safe(async e=>{if(e.detail==='compare')await initCompare();}));

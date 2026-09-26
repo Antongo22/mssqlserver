@@ -7,7 +7,7 @@ import { build } from 'esbuild';
 import { fileURLToPath } from 'node:url';
 const designerScript=(await build({entryPoints:[fileURLToPath(new URL('../designer-entry.js',import.meta.url))],bundle:true,write:false})).outputFiles[0].text;
 const html=await readFile(new URL('../public/index.html',import.meta.url),'utf8');
-const scripts=await Promise.all(['app.js','advanced.js','productivity.js','import-preview.js','plan-tree.js','data-workbench.js','navigation.js','governance.js','catalog-view.js','data-tools.js','workflow-tools.js','data-compare-view.js'].map(f=>readFile(new URL('../public/'+f,import.meta.url),'utf8')));
+const scripts=await Promise.all(['app.js','studio-helpers.js','advanced.js','productivity.js','import-preview.js','plan-tree.js','data-workbench.js','navigation.js','governance.js','catalog-view.js','data-tools.js','workflow-tools.js','data-compare-view.js'].map(f=>readFile(new URL('../public/'+f,import.meta.url),'utf8')));
 function setup(designer=false){
   const {window,document,CustomEvent,Event,DOMParser}=parseHTML(html),data=new Map(),calls=[];
   const $=id=>document.getElementById(id),dialog=$('modal');dialog.showModal=()=>{dialog.open=true;};dialog.close=()=>{dialog.open=false;dialog.dispatchEvent(new Event('close'));};

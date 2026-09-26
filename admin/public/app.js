@@ -1,5 +1,5 @@
 const $ = id => document.getElementById(id);
-const state = { workspace: 'database', connection: 'local', queryParameters: undefined, databases: [], database: null, tables: [], table: null, columns: [], data: null, results: null, resultIndex: 0, busy: false, generation: 0 };
+const state = { workspace: 'database', connection: 'local', queryParameters: undefined, querySessionId: null, databases: [], database: null, tables: [], table: null, columns: [], data: null, results: null, resultIndex: 0, busy: false, generation: 0 };
 const esc = value => String(value ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const quote = value => `[${value.replaceAll(']', ']]')}]`;
 const dbPath = () => `/api/databases/${encodeURIComponent(state.database)}`;
@@ -59,6 +59,7 @@ async function loadDatabases(preferred) {
 async function selectDatabase(name, { reveal = true } = {}) {
   if (!name) return;
   if (state.busy) throw new Error('Сначала завершите или отмените текущий SQL-запрос.');
+  if (state.querySessionId) await closeQuerySession();
   state.database = name; state.table = null; state.columns = []; state.data = null;
   const generation = ++state.generation;
   document.dispatchEvent(new CustomEvent('database-changing'));
@@ -142,6 +143,14 @@ function template(type) {
   setEditorText(templates[type]); tab('query'); window.sqlEditor?.focus(); $('query-template').value = '';
 }
 function setEditorText(text) { if(window.sqlEditor) window.sqlEditor.setValue(text); else $('sql-editor').value=text; }
+async function closeQuerySession() {
+  const id = state.querySessionId;
+  state.querySessionId = null;
+  if ($('query-session')) $('query-session').checked = false;
+  if ($('session-status')) $('session-status').textContent = '';
+  if (!id) return;
+  try { await api(`/api/query-session/${encodeURIComponent(id)}`, { method: 'DELETE' }); } catch { /* already closed */ }
+}
 async function runQuery() {
   if (state.busy || !state.database) return;
   if($('execution-plans')) $('execution-plans').hidden=true;
@@ -153,10 +162,14 @@ async function runQuery() {
   const text = window.sqlEditor ? (window.sqlEditor.getSelection().trim() || window.sqlEditor.getValue()) : (editor.value.substring(editor.selectionStart, editor.selectionEnd).trim() || editor.value);
   const id = crypto.randomUUID(); state.queryId = id;
   if($('cancel-query')) $('cancel-query').disabled = false;
+  const keepSession = $('query-session')?.checked && !state.planMode;
+  if (keepSession && !state.querySessionId) state.querySessionId = crypto.randomUUID();
+  if (!keepSession && state.querySessionId) await closeQuerySession();
   try {
-    const result = await api('/api/query', { method: 'POST', body: { database, sql: text, id, timeout: Number($('query-timeout')?.value || 60), transaction: $('query-transaction')?.checked, statistics: $('query-statistics')?.checked, mode: state.planMode, parameters: state.queryParameters } });
+    const result = await api('/api/query', { method: 'POST', body: { database, sql: text, id, timeout: Number($('query-timeout')?.value || 60), transaction: $('query-transaction')?.checked, statistics: $('query-statistics')?.checked, mode: state.planMode, parameters: state.queryParameters, sessionId: keepSession ? state.querySessionId : undefined } });
     document.dispatchEvent(new CustomEvent('query-completed', { detail: { database, sql: text, result } }));
     if (generation !== state.generation) return;
+    if (keepSession && $('session-status')) $('session-status').textContent = 'Сессия активна · #temp и переменные сохраняются между запусками';
     state.results = result; state.resultIndex = 0;
     $('query-stats').textContent = `${result.durationMs} мс · затронуто ${result.rowsAffected.reduce((a, b) => a + b, 0)} строк`;
     $('query-messages').hidden = !result.messages.length && !result.truncated;

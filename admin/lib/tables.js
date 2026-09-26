@@ -78,7 +78,7 @@ export function installTables(app, { withDb, sql, identifier: q, fail, connectio
   });
   app.post(root + '/import/preview',async(req,res)=>{
     const {schema='dbo',name,records}=req.body;
-    if(!Array.isArray(records)||records.length<1||records.length>500)throw fail('Импорт: 1–500 строк.');
+    if(!Array.isArray(records)||records.length<1||records.length>500)throw fail('Импорт: 1–500 строк за запрос (крупные файлы отправляются чанками).');
     const errors=[];
     await withDb(req.params.database,async p=>{
       const columns=await metadata(p,schema,name);
@@ -103,7 +103,7 @@ export function installTables(app, { withDb, sql, identifier: q, fail, connectio
   });
   app.post(root + '/import', async (req,res) => {
     const {schema='dbo',name,records}=req.body;
-    if(!Array.isArray(records)||records.length<1||records.length>500)throw fail('Импорт: от 1 до 500 записей.');
+    if(!Array.isArray(records)||records.length<1||records.length>500)throw fail('Импорт: от 1 до 500 записей за запрос (крупные файлы отправляются чанками).');
     await withDb(req.params.database,async p=>{
       const columns=await metadata(p,schema,name);
       await p.request().batch('SET XACT_ABORT ON; BEGIN TRANSACTION;');

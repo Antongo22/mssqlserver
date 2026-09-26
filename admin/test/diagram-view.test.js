@@ -62,6 +62,7 @@ test('model viewer: read-only load, escaped names, composite highlighting, searc
   $('diagram-tab').click();
   await waitFor(() => $('diagram-panel').getAttribute('aria-busy') === 'false');
   assert.equal($('diagram-export').disabled, false, $('diagram-status').textContent);
+  assert.equal($('diagram-autolayout').disabled, false);
   assert.equal($('diagram-svg').hasAttribute('hidden'), false, 'SVG visibility uses attributes, not HTML-only hidden properties');
   assert.equal(document.querySelectorAll('.model-node').length, 3);
   assert.equal(document.querySelectorAll('.model-edge').length, 1);

@@ -11,18 +11,64 @@ get('tables-tab').after(button);
 const panel = document.createElement('section');
 panel.id = 'diagram-panel'; panel.hidden = true; panel.setAttribute('role', 'tabpanel'); panel.setAttribute('aria-labelledby', 'diagram-tab');
 panel.innerHTML = `
-  <div class="section-toolbar"><div><h2>Даталогическая модель</h2><p class="muted">Таблицы и связи из структуры базы · только просмотр</p></div><div class="actions"><button class="button" id="diagram-reload">↻ Обновить</button><button class="button" id="diagram-export" disabled>↓ SVG</button><button class="button" id="diagram-fullscreen">На весь экран</button></div></div>
+  <div class="section-toolbar"><div><h2>Даталогическая модель</h2><p class="muted">Таблицы и связи из структуры базы · можно сохранить раскладку</p></div><div class="actions"><button class="button" id="diagram-reload">↻ Обновить</button><button class="button" id="diagram-autolayout" disabled>Автораскладка</button><button class="button" id="diagram-export" disabled>↓ SVG</button><button class="button" id="diagram-fullscreen">На весь экран</button></div></div>
   <div class="diagram-tools"><label class="diagram-search"><span class="sr-only">Поиск таблицы или столбца</span><input id="diagram-search" type="search" placeholder="Найти таблицу или столбец…"></label><select id="diagram-table-select" aria-label="Перейти к таблице"><option value="">Перейти к таблице…</option></select><div class="diagram-zoom"><button class="button" id="diagram-minus" aria-label="Уменьшить масштаб" disabled>−</button><output id="diagram-scale">100%</output><button class="button" id="diagram-plus" aria-label="Увеличить масштаб" disabled>＋</button><button class="button" id="diagram-fit" disabled>Вместить</button></div></div>
   <p id="diagram-status" class="muted" role="status">Выберите базу данных.</p>
-  <div class="diagram-workspace"><div class="diagram-viewport" id="diagram-viewport" tabindex="0" aria-label="Диаграмма: стрелки перемещают холст, плюс и минус меняют масштаб, 0 вмещает модель"><svg id="diagram-svg" xmlns="${ns}" role="group" aria-label="Таблицы и внешние ключи" hidden></svg><div id="diagram-message" class="diagram-message">Выберите базу данных.</div></div><aside id="diagram-inspector" class="diagram-inspector" aria-label="Сведения о таблице или связи"></aside></div>
+  <div class="diagram-workspace"><div class="diagram-viewport" id="diagram-viewport" tabindex="0" aria-label="Диаграмма: перетаскивайте таблицы, стрелки перемещают холст, плюс и минус меняют масштаб, 0 вмещает модель"><svg id="diagram-svg" xmlns="${ns}" role="group" aria-label="Таблицы и внешние ключи" hidden></svg><div id="diagram-message" class="diagram-message">Выберите базу данных.</div></div><aside id="diagram-inspector" class="diagram-inspector" aria-label="Сведения о таблице или связи"></aside></div>
   <div class="diagram-legend"><span><b>PK</b> первичный ключ</span><span><b>FK</b> внешний ключ</span><span><b>UK</b> уникальный ключ</span><span><b>?</b> допускается NULL</span><span><b>N</b> от 0 до многих</span><span>Линия: родитель → дочерняя таблица</span><span>Пунктир: FK отключён / не проверен</span></div>
-  <p class="muted diagram-help">Перетаскивайте фон, чтобы перемещать холст. Колесо — масштаб. Нажмите таблицу или линию, чтобы увидеть подробности. Связи отображаются только по существующим FK.</p>`;
+  <p class="muted diagram-help">Перетаскивайте таблицы за заголовок, чтобы сохранить свою раскладку в браузере. Колесо — масштаб. Нажмите таблицу или линию, чтобы увидеть подробности. «Автораскладка» сбрасывает сохранённые позиции.</p>`;
 document.querySelector('.workspace').append(panel);
 button.onclick = () => tab('diagram');
 const svg = get('diagram-svg'), viewport = get('diagram-viewport'), inspector = get('diagram-inspector');
 let model = null, graph = null, scene = null, selected = null, tables = new Map();
-let revision = 0, controller, cancelLayout, currentDatabase, zoom = 1, pan = { x: 0, y: 0 }, drag = null, moved = false;
-const short = (text, length) => text.length > length ? text.slice(0, length - 1) + '…' : text;
+let revision = 0, controller, cancelLayout, currentDatabase, zoom = 1, pan = { x: 0, y: 0 }, drag = null, moved = false, nodeDrag = null, layoutDirty = false;
+const layoutKey = () => `studio.diagram.layout.v1:${state.connection || 'local'}:${currentDatabase || ''}`;
+const fingerprint = data => data.tables.map(t => `${t.id}:${t.schema}.${t.name}:${t.columns.length}`).sort().join('|');
+function readLayout(data) {
+  try {
+    const saved = JSON.parse(localStorage.getItem(layoutKey()) || 'null');
+    if (!saved || saved.fingerprint !== fingerprint(data) || !saved.positions) return null;
+    return saved;
+  } catch { return null; }
+}
+function writeLayout() {
+  if (!model || !graph) return;
+  const positions = Object.fromEntries(graph.children.map(n => {
+    const id = Number(n.id.slice(1));
+    return [id, { x: n.x, y: n.y }];
+  }));
+  try { localStorage.setItem(layoutKey(), JSON.stringify({ fingerprint: fingerprint(model), positions, zoom, pan })); } catch { /* quota */ }
+  layoutDirty = false;
+}
+function clearLayout() { try { localStorage.removeItem(layoutKey()); } catch { /* ignore */ } }
+function applySavedPositions(data, positions) {
+  const children = buildDiagramGraph(data).children.map(child => {
+    const id = Number(child.id.slice(1)), saved = positions[id];
+    return { ...child, x: saved?.x ?? 0, y: saved?.y ?? 0 };
+  });
+  const edges = data.foreignKeys.map(fk => {
+    const parent = children.find(n => n.id === nodeId(fk.parentTableId));
+    const child = children.find(n => n.id === nodeId(fk.childTableId));
+    const parentCol = data.tables.find(t => t.id === fk.parentTableId)?.columns.findIndex(c => c.id === fk.columns[0].parentColumnId) ?? 0;
+    const childCol = data.tables.find(t => t.id === fk.childTableId)?.columns.findIndex(c => c.id === fk.columns[0].childColumnId) ?? 0;
+    const start = { x: parent.x + parent.width, y: parent.y + HEADER + Math.max(0, parentCol) * ROW + ROW / 2 };
+    const end = { x: child.x, y: child.y + HEADER + Math.max(0, childCol) * ROW + ROW / 2 };
+    const mid = (start.x + end.x) / 2;
+    return {
+      id: edgeId(fk.id),
+      sections: [{ startPoint: start, endPoint: end, bendPoints: [{ x: mid, y: start.y }, { x: mid, y: end.y }] }],
+      labels: [{ id: `label${fk.id}`, text: `${fk.optional ? '0..1' : '1'} : ${fk.childUnique ? '0..1' : 'N'}`, x: mid - 41, y: (start.y + end.y) / 2 - 11, width: 82, height: 22 }],
+    };
+  });
+  const width = Math.max(400, ...children.map(n => n.x + n.width)) + 48;
+  const height = Math.max(300, ...children.map(n => n.y + n.height)) + 48;
+  return { id: 'database', children, edges, width, height };
+}
+function rerouteAfterDrag() {
+  if (!model || !graph) return;
+  graph = applySavedPositions(model, Object.fromEntries(graph.children.map(n => [Number(n.id.slice(1)), { x: n.x, y: n.y }])));
+  render(); highlight();
+}const short = (text, length) => text.length > length ? text.slice(0, length - 1) + '…' : text;
 const fullname = t => `${t.schema}.${t.name}`;
 function element(tag, attrs = {}, text) {
   const node = document.createElementNS(ns, tag);
@@ -58,7 +104,7 @@ const svgStyles = `
 `;
 
 function ready(enabled) {
-  for (const id of ['export', 'minus', 'plus', 'fit']) get('diagram-' + id).disabled = !enabled;
+  for (const id of ['export', 'minus', 'plus', 'fit', 'autolayout']) get('diagram-' + id).disabled = !enabled;
 }
 function reset() {
   revision++; controller?.abort(); cancelLayout?.(); cancelLayout = null;
@@ -86,7 +132,7 @@ async function layout(data, signal) {
     if (cancelLayout === abort) cancelLayout = null;
   }
 }
-async function load() {
+async function load(forceAuto = false) {
   reset();
   const database = state.database, version = revision;
   if (!database) return;
@@ -103,21 +149,28 @@ async function load() {
       return;
     }
     get('diagram-status').textContent = `Автоматическая раскладка: ${data.tables.length} таблиц, ${data.foreignKeys.length} связей…`;
-    const positions = await layout(data, signal);
+    const saved = forceAuto ? null : readLayout(data);
+    let positions;
+    if (saved) {
+      positions = applySavedPositions(data, saved.positions);
+      if (Number.isFinite(saved.zoom)) zoom = saved.zoom;
+      if (saved.pan) pan = { ...saved.pan };
+    } else {
+      positions = await layout(data, signal);
+    }
     if (version !== revision) return;
     model = data; graph = positions; tables = new Map(data.tables.map(t => [t.id, t]));
     render(); updateSearch(); showOverview(); ready(true);
-    get('diagram-status').textContent = `${database} · ${data.tables.length} таблиц · ${data.foreignKeys.length} связей · обновлено ${new Date().toLocaleTimeString('ru-RU')}`;
+    get('diagram-status').textContent = `${database} · ${data.tables.length} таблиц · ${data.foreignKeys.length} связей · ${saved ? 'сохранённая раскладка' : 'автораскладка'} · ${new Date().toLocaleTimeString('ru-RU')}`;
     get('diagram-message').hidden = true; svg.removeAttribute('hidden');
-    requestAnimationFrame(() => { if (version === revision) fit(); });
+    requestAnimationFrame(() => { if (version === revision) { if (saved) transform(); else fit(); } });
   } catch (error) {
     if (version !== revision || error.name === 'AbortError') return;
     get('diagram-message').textContent = 'Не удалось построить модель. Нажмите «Обновить», чтобы повторить.';
     get('diagram-status').textContent = error.message;
   } finally { if (version === revision) panel.setAttribute('aria-busy', 'false'); }
 }
-function render() {
-  svg.replaceChildren();
+function render() {  svg.replaceChildren();
   svg.append(element('style', {}, svgStyles), element('title', {}, `Модель базы ${model.database}`));
   const defs = element('defs');
   const marker = element('marker', { id: 'diagram-arrow', viewBox: '0 0 10 10', refX: 9, refY: 5, markerWidth: 6, markerHeight: 6, orient: 'auto-start-reverse' });
@@ -239,7 +292,11 @@ function scale(factor, x = viewport.clientWidth / 2, y = viewport.clientHeight /
   const next = Math.max(Math.min(.03, zoom), Math.min(3, zoom * factor));
   pan = { x: x - (x - pan.x) * next / zoom, y: y - (y - pan.y) * next / zoom }; zoom = next; transform();
 }
-get('diagram-reload').onclick = load;
+get('diagram-reload').onclick = () => load(false);
+get('diagram-autolayout').onclick = async () => {
+  try { clearLayout(); await load(true); notice('Автораскладка применена. Прежние позиции сброшены.'); }
+  catch (error) { notice(error.message, true); }
+};
 get('diagram-fit').onclick = fit;
 get('diagram-plus').onclick = () => scale(1.25);
 get('diagram-minus').onclick = () => scale(.8);
@@ -258,7 +315,7 @@ function inspectTarget(target) {
   else if (fk) selectRelation(Number(fk.dataset.fkId));
   else { selected = null; highlight(); showOverview(); }
 }
-svg.addEventListener('click', event => { if (!moved) inspectTarget(event.target); });
+svg.addEventListener('click', event => { if (!moved && !nodeDrag) inspectTarget(event.target); });
 viewport.addEventListener('wheel', event => {
   if (!graph) return;
   event.preventDefault();
@@ -266,15 +323,41 @@ viewport.addEventListener('wheel', event => {
 }, { passive: false });
 viewport.addEventListener('pointerdown', event => {
   if (event.button !== 0 || !graph) return;
-  moved = false; drag = { pointer: event.pointerId, x: event.clientX, y: event.clientY, pan: { ...pan }, target: event.target };
+  moved = false;
+  const header = event.target.closest('.node-header, .node-title, .node-schema');
+  const node = header?.closest('[data-table-id]');
+  if (node) {
+    const child = graph.children.find(n => n.id === nodeId(Number(node.dataset.tableId)));
+    if (!child) return;
+    nodeDrag = { pointer: event.pointerId, x: event.clientX, y: event.clientY, origin: { x: child.x, y: child.y }, node: child, el: node };
+    return;
+  }
+  drag = { pointer: event.pointerId, x: event.clientX, y: event.clientY, pan: { ...pan }, target: event.target };
 });
 viewport.addEventListener('pointermove', event => {
+  if (nodeDrag && nodeDrag.pointer === event.pointerId) {
+    const dx = (event.clientX - nodeDrag.x) / zoom, dy = (event.clientY - nodeDrag.y) / zoom;
+    if (Math.abs(dx) + Math.abs(dy) > 2) { moved = true; viewport.setPointerCapture(event.pointerId); viewport.classList.add('dragging'); }
+    if (moved) {
+      nodeDrag.node.x = nodeDrag.origin.x + dx;
+      nodeDrag.node.y = nodeDrag.origin.y + dy;
+      nodeDrag.el.setAttribute('transform', `translate(${nodeDrag.node.x} ${nodeDrag.node.y})`);
+      layoutDirty = true;
+    }
+    return;
+  }
   if (!drag || drag.pointer !== event.pointerId) return;
   const dx = event.clientX - drag.x, dy = event.clientY - drag.y;
   if (Math.abs(dx) + Math.abs(dy) > 4) { moved = true; viewport.setPointerCapture(event.pointerId); viewport.classList.add('dragging'); }
   if (moved) { pan = { x: drag.pan.x + dx, y: drag.pan.y + dy }; transform(); }
 });
-const endDrag = () => { drag = null; viewport.classList.remove('dragging'); };
+const endDrag = event => {
+  if (nodeDrag && (!event || event.pointerId === nodeDrag.pointer)) {
+    if (moved && layoutDirty) { rerouteAfterDrag(); writeLayout(); get('diagram-status').textContent = `${currentDatabase} · раскладка сохранена в браузере · ${new Date().toLocaleTimeString('ru-RU')}`; }
+    nodeDrag = null;
+  }
+  drag = null; viewport.classList.remove('dragging');
+};
 viewport.addEventListener('pointerup', endDrag); viewport.addEventListener('pointercancel', endDrag); viewport.addEventListener('lostpointercapture', endDrag);
 viewport.addEventListener('pointerleave', () => { if (!moved) endDrag(); });
 viewport.onkeydown = event => {

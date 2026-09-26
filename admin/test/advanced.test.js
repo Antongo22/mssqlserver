@@ -31,6 +31,13 @@ test('advanced workflows on isolated databases', {timeout:180000},async()=>{
     const objects=await ok(root+'/objects');assert.ok(objects.objects.some(o=>o.name==='ItemNames'));
     const view=objects.objects.find(o=>o.name==='ItemNames');assert.match((await ok(root+'/definition/'+view.id)).definition,/CREATE\s+(?:OR ALTER\s+)?VIEW/);
     const go=await query('CREATE TABLE #x(v int);\nGO\nINSERT #x VALUES(1);\nGO 2\nSELECT COUNT(*) n FROM #x;');assert.equal(go.recordsets.at(-1).rows[0][0],2);
+    const sessionId=randomUUID();
+    await query('CREATE TABLE #persist(v int); INSERT #persist VALUES(7);',{sessionId});
+    const kept=await query('SELECT v FROM #persist;',{sessionId});assert.equal(kept.recordsets[0].rows[0][0],7);
+    await ok('/api/query-session/'+sessionId,'DELETE');
+    assert.equal((await call('/api/query','POST',{database:db,sessionId,sql:'SELECT v FROM #persist;'})).status,400);
+    await ok('/api/query-session/'+sessionId,'DELETE');
+    assert.equal((await call('/api/query','POST',{database:db,sessionId:randomUUID(),mode:'estimated',sql:'SELECT 1;'})).status,400);
     const rollback=await call('/api/query','POST',{database:db,transaction:true,sql:"INSERT dbo.Items(Amount) VALUES(99);\nGO\nSELECT * FROM MissingTable;"});assert.equal(rollback.status,400);assert.equal(rollback.data.partial.rolledBack,true);
     assert.equal((await query('SELECT COUNT(*) n FROM dbo.Items')).recordsets[0].rows[0][0],4);
     const plan=await query('SELECT * FROM dbo.Items WHERE Id=1',{mode:'estimated'});assert.match(plan.recordsets[0].rows[0][0],/ShowPlanXML/);
