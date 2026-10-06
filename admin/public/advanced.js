@@ -188,7 +188,7 @@ async function loadBackups(generation){
   $('backups-panel').innerHTML=`<div class="section-toolbar"><div><h2>Резервные копии</h2><p class="muted">Полная COPY_ONLY-копия с CHECKSUM. Отдельное хранилище сохраняется при сбросе базы.</p></div><div class="actions">${button('backup-create','＋ Копия текущей базы')}${button('backup-local-restore','Восстановить с компьютера')}${button('backup-upload','↑ Загрузить .bak')}${button('reload','↻')}</div></div><div class="panel">${files.map((f,i)=>`<div class="object-row"><div><strong>${esc(f.name)}</strong><small>${(f.size/1048576).toFixed(1)} МБ · ${new Date(f.modified).toLocaleString('ru-RU')}</small></div><div class="actions">${button('backup-download','Скачать',`data-index="${i}"`)}${button('backup-verify','Проверить',`data-index="${i}"`)}${button('backup-restore','Восстановить',`data-index="${i}"`)}${button('backup-delete','×',`data-index="${i}" aria-label="Удалить резервную копию"`)}</div></div>`).join('')||blank('Резервных копий пока нет.')}</div><p class="muted">Восстановление выполняется в новую базу. Для перезаписи существующей используйте проверенный RESTORE-скрипт в редакторе.</p>`;
 }
 async function backupAction(action,control){
-  const file=extra.backups[Number(control.dataset.index)];
+  const file=extra.backups?.[Number(control.dataset.index)];
   if(action==='backup-create')return modal('Создать резервную копию',`<p class="modal-copy">База: <strong>${esc(state.database)}</strong>. Файл будет сохранён отдельно от данных SQL Server.</p>`,async()=>{await api('/api/backups',{method:'POST',body:{database:state.database}});await loadSection('backups');notice('Резервная копия создана.');},'Создать копию');
   if(action==='backup-verify'){control.disabled=true;try{await api(`/api/backups/${encodeURIComponent(file.name)}/verify`,{method:'POST'});notice('RESTORE VERIFYONLY: резервная копия прошла проверку.');}finally{control.disabled=false;}return;}
   if(action==='backup-download'){
@@ -207,10 +207,12 @@ async function backupAction(action,control){
     const uploaded=await response.json();if(!response.ok)throw new Error(uploaded.error);
     await api(`/api/backups/${encodeURIComponent(uploaded.name)}/verify`,{method:'POST'});
     await api(`/api/backups/${encodeURIComponent(uploaded.name)}/restore`,{method:'POST',body});
-    await loadDatabases(body.database);notice('Локальный файл восстановлен в новую базу.');
+    showWorkspace('database');await loadDatabases(body.database);notice('Локальный файл восстановлен в новую базу.');
   },'Загрузить и восстановить');
   if(action==='backup-restore')return modal('Восстановить в новую базу',`<p class="modal-copy">${esc(file.name)}</p>${field('database','Имя новой базы')}${field('confirm','Повторите имя базы')}`,async form=>{const body=formValues(form);await api(`/api/backups/${encodeURIComponent(file.name)}/restore`,{method:'POST',body});await loadDatabases(body.database);notice('База восстановлена.');},'Восстановить');
 }
+const restoreBakButton=$('restore-bak');
+restoreBakButton.onclick=safe(async()=>backupAction('backup-local-restore',restoreBakButton));
 async function loadMonitor(generation){
   const data=await api('/api/monitor');if(generation!==state.generation)return;extra.sessions=data.sessions;
   $('monitor-panel').innerHTML=`<div class="section-toolbar"><div><h2>Активность сервера</h2><p class="muted">Снимок на ${new Date().toLocaleTimeString('ru-RU')} · память процесса ${data.memory.memoryMB} МБ</p></div>${button('reload','↻ Обновить')}</div>${window.blockingTreeHTML?.(data.blocking)||''}<div class="service-cards">${data.services.map(s=>`<div class="panel"><strong>${esc(s.servicename)}</strong><span>${esc(s.status)}</span></div>`).join('')}</div><div class="panel data-scroll"><table><thead><tr><th>Сессия</th><th>Логин / программа</th><th>База</th><th>Статус</th><th>CPU / время</th><th>Блокировка / ожидание</th><th>Транзакции</th><th></th></tr></thead><tbody>${data.sessions.map((s,i)=>`<tr><td>${s.id}</td><td>${esc(s.login)}<br>${esc(s.program)}</td><td>${esc(s.database||'—')}</td><td>${esc(s.status)}</td><td>${s.cpuMs||0} / ${s.elapsedMs||0} мс</td><td>${s.blockedBy||'—'} / ${esc(s.wait||'—')}</td><td>${s.openTransactions}</td><td>${button('session-sql','SQL',`data-index="${i}"`)}${button('session-kill','Завершить',`data-index="${i}"`)}</td></tr>`).join('')||'<tr><td colspan="8">Нет пользовательских сессий</td></tr>'}</tbody></table></div>`;
