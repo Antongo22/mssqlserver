@@ -42,6 +42,7 @@ async function refreshCompletion(){
   catch{ /* Database may have been removed by the query. */ }
 }
 document.addEventListener('database-changing',()=>{completionRevision++;window.sqlEditor?.setSchema({});window.sqlEditor?.setRelations(null);});
+document.addEventListener('database-changed',refreshCompletion);
 document.addEventListener('completion-refresh',refreshCompletion);
 document.addEventListener('query-completed',refreshCompletion);
 
