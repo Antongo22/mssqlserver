@@ -1,0 +1,9 @@
+# Use with: docker compose -f compose.yaml -f compose.sql2022.yaml up -d --build
+services:
+  mssql:
+    build:
+      context: .
+      dockerfile: Dockerfile.sql2022
+    image: mssqlserver-local:2022
+    volumes:
+      - mssql_data_2022:/var/opt/mssql

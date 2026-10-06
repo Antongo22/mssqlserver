@@ -5,7 +5,7 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-    image: mssqlserver-local:2022
+    image: mssqlserver-local:2025
     platform: linux/amd64
     environment:
       ACCEPT_EULA: "Y"
@@ -15,7 +15,7 @@ services:
     ports:
       - "127.0.0.1:${MSSQL_PORT:-1433}:1433"
     volumes:
-      - mssql_data:/var/opt/mssql
+      - mssql_data_2025:/var/opt/mssql
       - mssql_backups:/var/opt/mssql/backups
     restart: unless-stopped
     healthcheck:
@@ -24,6 +24,26 @@ services:
       timeout: 10s
       retries: 30
       start_period: 30s
+
+  # Исходный том SQL Server 2022 сохранён для ручного отката/доступа к старой базе.
+  mssql2022:
+    profiles: [legacy]
+    build:
+      context: .
+      dockerfile: Dockerfile.sql2022
+    image: mssqlserver-local:2022
+    platform: linux/amd64
+    environment:
+      ACCEPT_EULA: "Y"
+      MSSQL_PID: Developer
+      MSSQL_AGENT_ENABLED: "true"
+      MSSQL_SA_PASSWORD: ${MSSQL_SA_PASSWORD:?Set MSSQL_SA_PASSWORD in .env}
+    ports:
+      - "127.0.0.1:${MSSQL_2022_PORT:-1434}:1433"
+    volumes:
+      - mssql_data_2022:/var/opt/mssql
+      - mssql_backups:/var/opt/mssql/backups
+    restart: unless-stopped
 
   admin:
     build: ./admin
@@ -48,7 +68,9 @@ services:
       start_period: 15s
 
 volumes:
-  mssql_data:
+  mssql_data_2025:
+    name: mssqlserver_mssql_data_2025
+  mssql_data_2022:
     name: mssqlserver_mssql_data
   mssql_backups:
     name: mssqlserver_backups

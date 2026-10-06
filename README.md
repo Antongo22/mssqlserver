@@ -1,6 +1,6 @@
 # SQL Server в Docker
 
-Учебный SQL Server 2022 Developer. Нужны запущенный Docker Desktop и Docker Compose.
+Учебный SQL Server 2025 Developer. Нужны запущенный Docker Desktop и Docker Compose.
 На Apple Silicon используется `linux/amd64` через эмуляцию. Microsoft официально
 не поддерживает этот режим: https://learn.microsoft.com/en-us/sql/linux/quickstart-install-connect-docker?view=sql-server-ver17
 Developer предназначен для разработки и тестирования.
@@ -9,8 +9,10 @@ Developer предназначен для разработки и тестиро
 
 ```bash
 ./scripts/start.sh
-./scripts/check.sh
 ```
+
+Откройте **http://localhost:3001** — панель MSSQL Studio. `./scripts/check.sh`
+запускает отдельную проверку сервера и создаёт учебную базу `LearningDB`.
 
 Compose собирает локальный образ из `Dockerfile` в текущей директории.
 SQL-файлы также копируются в контейнер в `/usr/src/sql/`.
@@ -32,6 +34,12 @@ MSSQL Studio (GUI + Node.js API). Панель стартует после го�
 Оба сервиса перезапускаются автоматически, пока не остановлены вручную.
 При первом запуске в новой копии проекта используйте `./scripts/start.sh` —
 он также создаст `.env`, если файла ещё нет.
+
+При переходе с SQL Server 2022 его исходная база сохранена в томе
+`mssqlserver_mssql_data`. SQL Server 2025 использует новый том
+`mssqlserver_mssql_data_2025`. Чтобы временно вернуться к SQL Server 2022 с
+прежними данными, выполните `./scripts/use-sql2022.sh`; обычный запуск снова
+поднимет SQL Server 2025. Полный сброс удаляет оба тома с базами, сохраняя архивы.
 
 Кнопка темы в правом верхнем углу переключает светлое и тёмное оформление,
 включая SQL-редактор, таблицы и формы. Выбор сохраняется в браузере. Пока тема

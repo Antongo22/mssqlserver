@@ -1,4 +1,4 @@
-FROM mcr.microsoft.com/mssql/server:2022-latest
+FROM mcr.microsoft.com/mssql/server:2025-latest
 
 # SQL-скрипты для ручной проверки внутри контейнера.
 # Образ SQL Server не запускает их автоматически.
