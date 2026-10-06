@@ -1,0 +1,4 @@
+.schema-controls{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.schema-picker{display:flex;align-items:center;gap:9px;color:var(--muted);font-size:13px}
+.schema-picker select{min-width:175px;padding:10px 12px}
+@media(max-width:700px){.schema-controls{width:100%}.schema-picker{flex:1}.schema-picker select{flex:1;min-width:0}.schema-controls #new-table{flex:1}}

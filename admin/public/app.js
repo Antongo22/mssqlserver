@@ -1,5 +1,5 @@
 const $ = id => document.getElementById(id);
-const state = { workspace: 'database', connection: 'local', queryParameters: undefined, querySessionId: null, databases: [], database: null, tables: [], table: null, columns: [], data: null, results: null, resultIndex: 0, busy: false, generation: 0 };
+const state = { workspace: 'database', connection: 'local', queryParameters: undefined, querySessionId: null, databases: [], database: null, tables: [], schema: '*', table: null, columns: [], data: null, results: null, resultIndex: 0, busy: false, generation: 0 };
 const esc = value => String(value ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const quote = value => `[${value.replaceAll(']', ']]')}]`;
 const dbPath = () => `/api/databases/${encodeURIComponent(state.database)}`;
@@ -60,7 +60,7 @@ async function selectDatabase(name, { reveal = true } = {}) {
   if (!name) return;
   if (state.busy) throw new Error('Сначала завершите или отмените текущий SQL-запрос.');
   if (state.querySessionId) await closeQuerySession();
-  state.database = name; state.table = null; state.columns = []; state.data = null;
+  state.database = name; state.schema = '*'; state.table = null; state.columns = []; state.data = null;
   const generation = ++state.generation;
   document.dispatchEvent(new CustomEvent('database-changing'));
   const database = state.databases.find(d => d.name === name);
@@ -84,8 +84,14 @@ async function selectDatabase(name, { reveal = true } = {}) {
   } catch (error) { if (generation === state.generation) { state.tables = []; renderTables(); notice(error.message, true); } }
 }
 function renderTables() {
-  $('table-count').textContent = state.tables.length;
-  $('tables-list').innerHTML = state.tables.length ? state.tables.map((t, i) => `<button class="table-card ${state.table?.id === t.id ? 'selected' : ''}" data-table="${i}"><span class="table-icon">▦</span><span><strong>${esc(t.name)}</strong><small>${esc(t.schema)} · ${Number(t.rows).toLocaleString('ru-RU')} записей</small></span><span class="arrow">↗</span></button>`).join('') : '<div class="empty"><span class="empty-symbol">▦</span><h3>В этой базе пока нет таблиц</h3><p>Создайте первую таблицу в конструкторе<br>или выполните CREATE TABLE в SQL-редакторе.</p><button class="button primary" data-action="new-table">＋ Создать таблицу</button></div>';
+  const schemas = [...new Set(state.tables.map(table => table.schema))].sort((a, b) => a.localeCompare(b, 'ru'));
+  if (!schemas.includes(state.schema)) state.schema = '*';
+  const selector = $('schema-filter');
+  selector.innerHTML = `<option value="*">Все схемы (${state.tables.length})</option>${schemas.map(schema => `<option value="${esc(schema)}">${esc(schema)} (${state.tables.filter(table => table.schema === schema).length})</option>`).join('')}`;
+  selector.value = state.schema; selector.disabled = schemas.length < 2;
+  const tables = state.schema === '*' ? state.tables : state.tables.filter(table => table.schema === state.schema);
+  $('table-count').textContent = tables.length;
+  $('tables-list').innerHTML = tables.length ? tables.map((t) => `<button class="table-card ${state.table?.id === t.id ? 'selected' : ''}" data-table-id="${t.id}"><span class="table-icon">▦</span><span><strong>${esc(t.name)}</strong><small>${esc(t.schema)} · ${Number(t.rows).toLocaleString('ru-RU')} записей</small></span><span class="arrow">↗</span></button>`).join('') : '<div class="empty"><span class="empty-symbol">▦</span><h3>В этой базе пока нет таблиц</h3><p>Создайте первую таблицу в конструкторе<br>или выполните CREATE TABLE в SQL-редакторе.</p><button class="button primary" data-action="new-table">＋ Создать таблицу</button></div>';
 }
 function grid(columns, rows) {
   if (!columns.length) return '<div class="empty small"><p>Запрос выполнен без набора данных.</p></div>';
@@ -254,7 +260,8 @@ $('cancel-modal').onclick = $('close-modal').onclick = () => $('modal').close();
 $('new-database').onclick = newDatabase; $('delete-database').onclick = deleteDatabase; $('new-table').onclick = newTable;
 $('refresh').onclick = safe(() => loadDatabases()); $('db-search').oninput = renderDatabases;
 $('databases').onclick = safe(async event => { const button = event.target.closest('[data-db]'); if (button) { notice(''); await selectDatabase(button.dataset.db); } });
-$('tables-list').onclick = safe(async event => { if (event.target.closest('[data-action="new-table"]')) return newTable(); const button = event.target.closest('[data-table]'); if (button) await openTable(state.tables[Number(button.dataset.table)]); });
+$('schema-filter').onchange = () => { state.schema = $('schema-filter').value; if (state.table && state.schema !== '*' && state.table.schema !== state.schema) { state.table = null; $('table-detail').hidden = true; } renderTables(); };
+$('tables-list').onclick = safe(async event => { if (event.target.closest('[data-action="new-table"]')) return newTable(); const button = event.target.closest('[data-table-id]'); if (button) await openTable(state.tables.find(table => table.id === Number(button.dataset.tableId))); });
 $('tables-tab').onclick = () => tab('tables'); $('query-tab').onclick = () => tab('query');
 $('show-data').onclick = showTableData; $('show-structure').onclick = showStructure;
 $('select-template').onclick = () => template('select'); $('insert-template').onclick = () => template('insert');

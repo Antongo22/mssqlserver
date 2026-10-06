@@ -7,7 +7,7 @@
   <link rel="icon" type="image/svg+xml" href="/icon.svg">
   <meta name="theme-color" content="#335cdb">
   <script src="/theme.js"></script>
-  <link rel="stylesheet" href="/style.css"><link rel="stylesheet" href="/advanced.css"><link rel="stylesheet" href="/create-table-fks.css"><script src="/editor.js" defer></script><script src="/app.js" defer></script><script src="/studio-helpers.js" defer></script><script src="/create-table-fks.js" defer></script><script src="/advanced.js" defer></script>
+  <link rel="stylesheet" href="/style.css"><link rel="stylesheet" href="/schema-filter.css"><link rel="stylesheet" href="/advanced.css"><link rel="stylesheet" href="/create-table-fks.css"><script src="/editor.js" defer></script><script src="/app.js" defer></script><script src="/studio-helpers.js" defer></script><script src="/create-table-fks.js" defer></script><script src="/advanced.js" defer></script>
   <link rel="stylesheet" href="/diagram.css"><script src="/diagram.js" defer></script>
   <link rel="stylesheet" href="/productivity.css"><script src="/productivity.js" defer></script><script src="/import-preview.js" defer></script><script src="/plan-tree.js" defer></script>
 <link rel="stylesheet" href="/daily.css"><script src="/data-workbench.js" defer></script>
@@ -40,7 +40,7 @@
     <div id="notice" role="status" hidden></div>
     <div class="tabs" role="tablist" aria-label="Разделы базы"><button class="tab active" id="tables-tab" role="tab" aria-selected="true" aria-controls="tables-panel">▦ &nbsp; Таблицы <span id="table-count">0</span></button><button class="tab" id="query-tab" role="tab" aria-selected="false" aria-controls="query-panel">⌘ &nbsp; SQL-редактор</button></div>
     <section id="tables-panel" role="tabpanel" aria-labelledby="tables-tab">
-      <div class="section-toolbar"><div><h2>Таблицы базы</h2><p class="muted">Структура и данные в одном месте</p></div><button id="new-table" class="button primary" disabled>＋ Создать таблицу</button></div>
+      <div class="section-toolbar"><div><h2>Таблицы базы</h2><p class="muted">Структура и данные в одном месте</p></div><div class="schema-controls"><label class="schema-picker" for="schema-filter">Схема<select id="schema-filter" aria-label="Фильтр таблиц по схеме" disabled><option value="*">Загрузка…</option></select></label><button id="new-table" class="button primary" disabled>＋ Создать таблицу</button></div></div>
       <div id="tables-list" class="table-list"></div>
       <section id="table-detail" class="panel" hidden><div class="panel-head"><h2 id="table-title"></h2><div class="actions"><button class="button" id="insert-template">＋ Добавить запись</button><button class="button" id="select-template">Открыть в SQL</button></div></div><div class="detail-tabs"><button id="show-data" class="chip active">Данные</button><button id="show-structure" class="chip">Структура</button><span id="data-note" class="muted">Первые 100 записей</span></div><div id="table-content" class="data-scroll"></div></section>
     </section>
